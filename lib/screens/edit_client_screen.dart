@@ -39,7 +39,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
 
   void _updateClient() async {
     if (_formKey.currentState!.validate()) {
-      final updated = Client(
+      final updatedClient = Client(
         id: widget.client.id,
         name: nameController.text.trim(),
         lastName: lastNameController.text.trim(),
@@ -47,15 +47,15 @@ class _EditClientScreenState extends State<EditClientScreen> {
         address: addressController.text.trim(),
         email: emailController.text.trim(),
         hasCredit: hasCredit,
-        creditLimit: hasCredit
-            ? double.tryParse(creditLimitController.text.trim()) ?? 0.0
-            : 0.0,
+        creditLimit: hasCredit ? double.tryParse(creditLimitController.text.trim()) ?? 0.0 : 0.0,
+        credit: widget.client.credit, // No se modifica aquí
+        creditAvailable: widget.client.creditAvailable, // Tampoco
       );
 
-      await DBHelper.updateClient(updated);
+      await DBHelper.updateClient(updatedClient);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cliente actualizado.')),
+        const SnackBar(content: Text('Cliente actualizado.')),
       );
 
       Navigator.pop(context, true);
@@ -65,7 +65,7 @@ class _EditClientScreenState extends State<EditClientScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Editar Cliente')),
+      appBar: AppBar(title: const Text('Editar Cliente')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Form(
@@ -74,34 +74,32 @@ class _EditClientScreenState extends State<EditClientScreen> {
             children: [
               TextFormField(
                 controller: nameController,
-                decoration: InputDecoration(labelText: 'Nombre'),
-                validator: (value) =>
-                    value!.isEmpty ? 'Ingrese un nombre' : null,
+                decoration: const InputDecoration(labelText: 'Nombre'),
+                validator: (value) => value!.isEmpty ? 'Ingrese un nombre' : null,
               ),
               TextFormField(
                 controller: lastNameController,
-                decoration: InputDecoration(labelText: 'Apellido'),
-                validator: (value) =>
-                    value!.isEmpty ? 'Ingrese un apellido' : null,
+                decoration: const InputDecoration(labelText: 'Apellido'),
+                validator: (value) => value!.isEmpty ? 'Ingrese un apellido' : null,
               ),
               TextFormField(
                 controller: phoneController,
-                decoration: InputDecoration(labelText: 'Teléfono'),
+                decoration: const InputDecoration(labelText: 'Teléfono'),
                 keyboardType: TextInputType.phone,
-                enabled: false, // No editable
+                enabled: false,
               ),
               TextFormField(
                 controller: addressController,
-                decoration: InputDecoration(labelText: 'Dirección'),
+                decoration: const InputDecoration(labelText: 'Dirección'),
               ),
               TextFormField(
                 controller: emailController,
-                decoration: InputDecoration(labelText: 'Email'),
+                decoration: const InputDecoration(labelText: 'Email'),
               ),
               DropdownButtonFormField<bool>(
                 value: hasCredit,
-                decoration: InputDecoration(labelText: '¿Tiene crédito?'),
-                items: [
+                decoration: const InputDecoration(labelText: '¿Tiene crédito?'),
+                items: const [
                   DropdownMenuItem(value: false, child: Text('No')),
                   DropdownMenuItem(value: true, child: Text('Sí')),
                 ],
@@ -114,8 +112,8 @@ class _EditClientScreenState extends State<EditClientScreen> {
               if (hasCredit)
                 TextFormField(
                   controller: creditLimitController,
-                  decoration: InputDecoration(labelText: 'Límite de crédito'),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Límite de crédito'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   validator: (value) {
                     if (hasCredit && (value == null || value.isEmpty)) {
                       return 'Ingrese el límite de crédito';
@@ -123,10 +121,10 @@ class _EditClientScreenState extends State<EditClientScreen> {
                     return null;
                   },
                 ),
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: _updateClient,
-                child: Text('Actualizar'),
+                child: const Text('Actualizar'),
               )
             ],
           ),

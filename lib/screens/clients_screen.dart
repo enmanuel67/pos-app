@@ -3,6 +3,7 @@ import '../models/client.dart';
 import '../db/db_helper.dart';
 import 'create_client_screen.dart';
 import 'edit_client_screen.dart';
+import 'client_profile_screen.dart';
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});
@@ -66,35 +67,47 @@ class _ClientsScreenState extends State<ClientsScreen> {
               ),
             ),
             Expanded(
-              child: ListView.separated(
-                itemCount: filteredClients.length,
-                separatorBuilder: (_, __) => Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final client = filteredClients[index];
-                  return ListTile(
-                    title: Text(client.name),
-                    subtitle: Text(client.phone),
-                    trailing: PopupMenuButton<String>(
-                      onSelected: (value) async {
-                        if (value == 'edit') {
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => EditClientScreen(client: client)),
-                          );
-                          if (result == true) _loadClients();
-                        } else if (value == 'delete') {
-                          _deleteClient(client.id!);
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        PopupMenuItem(value: 'edit', child: Text('Editar')),
-                        PopupMenuItem(value: 'delete', child: Text('Eliminar')),
-                      ],
-                    ),
-                  );
-                },
-              ),
+  child: ListView.separated(
+    itemCount: filteredClients.length,
+    separatorBuilder: (_, __) => Divider(height: 1),
+    itemBuilder: (context, index) {
+      final client = filteredClients[index];
+      return ListTile(
+        title: Text('${client.name} ${client.lastName}'),
+        subtitle: Text(client.phone),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ClientProfileScreen(client: client),
             ),
+          );
+        },
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) async {
+            if (value == 'edit') {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CreateClientScreen(client: client),
+                ),
+              );
+              if (result == true) _loadClients();
+            } else if (value == 'delete') {
+              await DBHelper.deleteClient(client.id!);
+              _loadClients();
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(value: 'edit', child: Text('Editar')),
+            PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+          ],
+        ),
+      );
+    },
+  ),
+),
+
           ],
         ),
         floatingActionButton: FloatingActionButton(

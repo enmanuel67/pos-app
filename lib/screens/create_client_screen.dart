@@ -43,15 +43,18 @@ class _CreateClientScreenState extends State<CreateClientScreen> {
   void _saveClient() async {
     if (_formKey.currentState!.validate()) {
       final newClient = Client(
-        id: widget.client?.id,
-        name: nameController.text.trim(),
-        lastName: lastNameController.text.trim(),
-        phone: phoneController.text.trim(),
-        address: addressController.text.trim(),
-        email: emailController.text.trim(),
-        hasCredit: hasCredit,
-        creditLimit: hasCredit ? double.tryParse(creditLimitController.text.trim()) ?? 0.0 : 0.0,
-      );
+  id: widget.client?.id,
+  name: nameController.text.trim(),
+  lastName: lastNameController.text.trim(),
+  phone: phoneController.text.trim(),
+  address: addressController.text.trim(),
+  email: emailController.text.trim(),
+  hasCredit: hasCredit,
+  creditLimit: hasCredit ? double.tryParse(creditLimitController.text.trim()) ?? 0.0 : 0.0,
+  credit: hasCredit ? double.tryParse(creditLimitController.text.trim()) ?? 0.0 : 0.0,
+  creditAvailable: hasCredit ? double.tryParse(creditLimitController.text.trim()) ?? 0.0 : 0.0,
+);
+
 
       if (widget.client == null) {
         await DBHelper.insertClient(newClient);

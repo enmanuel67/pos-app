@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:pos_app/screens/billing_screen.dart';
 import 'package:pos_app/screens/clients_screen.dart';
+import 'package:pos_app/screens/report_screen.dart';
+import 'package:pos_app/screens/sales_history_screen.dart';
 import 'package:pos_app/screens/suppliers_screen.dart';
 import 'products_screen.dart';
 
@@ -10,7 +13,7 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<_DashboardItem> items = [
       _DashboardItem('Facturación', Icons.point_of_sale, () {
-        // Navegación futura: Navigator.push(context, MaterialPageRoute(builder: (_) => FacturacionScreen()));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => BillingScreen()));
       }),
       _DashboardItem('Productos', Icons.inventory_2, () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => ProductsScreen()));
@@ -22,7 +25,10 @@ class DashboardScreen extends StatelessWidget {
         Navigator.push(context, MaterialPageRoute(builder: (_) => SuppliersScreen()));
       }),
       _DashboardItem('Historial', Icons.history, () {
-        // Navegación futura
+        Navigator.push(context, MaterialPageRoute(builder: (_) => SalesHistoryScreen()));
+      }),
+      _DashboardItem('Reportes', Icons.receipt, () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ReportScreen()));
       }),
     ];
 
