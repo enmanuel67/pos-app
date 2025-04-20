@@ -49,7 +49,7 @@ class Client {
       hasCredit: map['hasCredit'] == 1,
       creditLimit: (map['creditLimit'] ?? 0).toDouble(),
       credit: (map['credit'] ?? 0).toDouble(),
-      creditAvailable: (map['creditAvailable'] ?? 0).toDouble(),
+      creditAvailable: (map['creditAvailable'] as num).toDouble(),
     );
   }
 }

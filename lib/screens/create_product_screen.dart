@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import '../db/db_helper.dart';
 import '../models/product.dart';
 import '../models/supplier.dart';
+import '../db/db_helper.dart';
 
 class CreateProductScreen extends StatefulWidget {
-  final Product? product;
+  final String? initialBarcode;
 
-  const CreateProductScreen({super.key, this.product});
+  const CreateProductScreen({super.key, this.initialBarcode});
 
   @override
   State<CreateProductScreen> createState() => _CreateProductScreenState();
@@ -14,119 +14,98 @@ class CreateProductScreen extends StatefulWidget {
 
 class _CreateProductScreenState extends State<CreateProductScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController barcodeController = TextEditingController();
-  final TextEditingController descriptionController = TextEditingController();
-  final TextEditingController priceController = TextEditingController();
-  final TextEditingController quantityController = TextEditingController();
+  final nameController = TextEditingController();
+  final barcodeController = TextEditingController();
+  final descriptionController = TextEditingController();
+  final priceController = TextEditingController();
+  final costController = TextEditingController();
 
-  List<Supplier> _suppliers = [];
-  int? _selectedSupplierId;
+  List<Supplier> suppliers = [];
+  Supplier? selectedSupplier;
 
   @override
   void initState() {
     super.initState();
     _loadSuppliers();
-
-    if (widget.product != null) {
-      nameController.text = widget.product!.name;
-      barcodeController.text = widget.product!.barcode ?? '';
-      descriptionController.text = widget.product!.description ?? '';
-      priceController.text = widget.product!.price.toString();
-      quantityController.text = widget.product!.quantity.toString();
-      _selectedSupplierId = widget.product!.supplierId;
+    if (widget.initialBarcode != null) {
+      barcodeController.text = widget.initialBarcode!;
     }
   }
 
   Future<void> _loadSuppliers() async {
-    final suppliers = await DBHelper.getSuppliers();
+    final result = await DBHelper.getSuppliers();
     setState(() {
-      _suppliers = suppliers;
+      suppliers = result;
     });
   }
 
-  void _saveProduct() async {
+  Future<void> _saveProduct() async {
     if (_formKey.currentState!.validate()) {
       final newProduct = Product(
-        id: widget.product?.id,
         name: nameController.text.trim(),
         barcode: barcodeController.text.trim(),
         description: descriptionController.text.trim(),
         price: double.tryParse(priceController.text.trim()) ?? 0.0,
-        quantity: int.tryParse(quantityController.text.trim()) ?? 0,
-        supplierId: _selectedSupplierId,
+        cost: double.tryParse(costController.text.trim()) ?? 0.0,
+        quantity: 0, // Siempre inicia en 0
+        supplierId: selectedSupplier?.id ?? 0,
+        createdAt: DateTime.now().toIso8601String(), // <-- AGREGA ESTA LÍNEA
       );
 
-      if (widget.product == null) {
-        await DBHelper.insertProduct(newProduct);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Producto creado exitosamente')),
-        );
-      } else {
-        await DBHelper.updateProduct(newProduct);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Producto actualizado exitosamente')),
-        );
-      }
+      final productId = await DBHelper.insertProduct(newProduct);
+      final createdProduct = newProduct.copyWith(id: productId);
 
-      Navigator.pop(context);
+      Navigator.pop(context, createdProduct);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isEditing = widget.product != null;
-
     return Scaffold(
-      appBar: AppBar(title: Text(isEditing ? 'Editar Producto' : 'Nuevo Producto')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      appBar: AppBar(title: const Text('Nuevo Producto')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
-          child: ListView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextFormField(
                 controller: nameController,
-                decoration: InputDecoration(labelText: 'Nombre'),
-                validator: (value) => value!.isEmpty ? 'Ingrese un nombre' : null,
+                decoration: const InputDecoration(labelText: 'Nombre'),
+                validator: (value) => value!.isEmpty ? 'Requerido' : null,
               ),
               TextFormField(
                 controller: barcodeController,
-                decoration: InputDecoration(labelText: 'Código de Barras'),
+                decoration: const InputDecoration(labelText: 'Código de barra'),
               ),
               TextFormField(
                 controller: descriptionController,
-                decoration: InputDecoration(labelText: 'Descripción'),
+                decoration: const InputDecoration(labelText: 'Descripción'),
               ),
               TextFormField(
                 controller: priceController,
-                decoration: InputDecoration(labelText: 'Precio'),
+                decoration: const InputDecoration(labelText: 'Precio de venta'),
                 keyboardType: TextInputType.number,
               ),
               TextFormField(
-                controller: quantityController,
-                decoration: InputDecoration(labelText: 'Cantidad'),
+                controller: costController,
+                decoration: const InputDecoration(labelText: 'Costo unitario'),
                 keyboardType: TextInputType.number,
               ),
-              DropdownButtonFormField<int>(
-                value: _selectedSupplierId,
-                items: _suppliers.map((s) {
-                  return DropdownMenuItem(
-                    value: s.id,
-                    child: Text(s.name),
-                  );
-                }).toList(),
-                decoration: InputDecoration(labelText: 'Proveedor'),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedSupplierId = value;
-                  });
-                },
+              DropdownButtonFormField<Supplier>(
+                value: selectedSupplier,
+                decoration: const InputDecoration(labelText: 'Proveedor'),
+                items:
+                    suppliers.map((s) {
+                      return DropdownMenuItem(value: s, child: Text(s.name));
+                    }).toList(),
+                onChanged: (val) => setState(() => selectedSupplier = val),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _saveProduct,
-                child: Text(isEditing ? 'Actualizar' : 'Guardar'),
+                child: const Text('Guardar'),
               ),
             ],
           ),

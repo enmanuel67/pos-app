@@ -25,7 +25,7 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
   Future<void> _loadCreditSales() async {
     final allSales = await DBHelper.getCreditSalesByClient(widget.client.phone);
     final creditSales = allSales.where((s) => s.isCredit).toList();
-    final total = creditSales.fold(0.0, (sum, s) => sum + s.total);
+    final total = creditSales.fold(0.0, (sum, s) => sum + s.amountDue);
 
     setState(() {
       _creditSales = creditSales;
@@ -96,29 +96,31 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
 
   void _processPayment(double amount) async {
     double remaining = amount;
+    Map<int, double> affectedSales = {};
+
     for (var sale in _creditSales) {
       if (remaining <= 0) break;
-      final payment = remaining >= sale.total ? sale.total : remaining;
+      final payment = remaining >= sale.amountDue ? sale.amountDue : remaining;
       remaining -= payment;
       await DBHelper.markSaleAsPaid(sale.id!, payment);
+      affectedSales[sale.id!] = payment;
     }
 
-    // ✅ Calcular nueva deuda y crédito disponible
-    final newCredit = widget.client.credit - amount;
-    final newCreditAvailable = widget.client.creditLimit - newCredit;
+    final newCredit = (widget.client.credit - amount).clamp(0, widget.client.creditLimit);
+    final newAvailable = (widget.client.creditAvailable + amount).clamp(0, widget.client.creditLimit);
 
     await DBHelper.updateClientCredit(
       widget.client.phone,
-      newCredit,
-      newCreditAvailable,
+      newCredit.toDouble(),
+      newAvailable.toDouble(),
     );
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pago registrado')));
     _loadCreditSales();
-    _showReceipt(amount);
+    _showReceipt(amount, affectedSales);
   }
 
-  void _showReceipt(double amount) {
+  void _showReceipt(double amount, Map<int, double> affectedSales) {
     final now = DateTime.now();
     showDialog(
       context: context,
@@ -131,6 +133,10 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
             Text('Cliente: ${widget.client.name} ${widget.client.lastName}'),
             Text('Teléfono: ${widget.client.phone}'),
             Text('Fecha: ${now.toLocal().toString().split('.')[0]}'),
+            const Divider(),
+            Text('Facturas afectadas:', style: TextStyle(fontWeight: FontWeight.bold)),
+            ...affectedSales.entries.map((e) => Text('Factura #${e.key} - \$${e.value.toStringAsFixed(2)}')),
+            const Divider(),
             Text('Monto pagado: \$${amount.toStringAsFixed(2)}'),
           ],
         ),
@@ -147,6 +153,8 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final c = widget.client;
+    final creditDisponible = (c.creditLimit - _totalDebt).clamp(0.0, c.creditLimit);
+
     return Scaffold(
       appBar: AppBar(title: Text('Perfil de ${c.name} ${c.lastName}')),
       body: Padding(
@@ -156,14 +164,14 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
             Text('Teléfono: ${c.phone}'),
             Text('Dirección: ${c.address}'),
             Text('Email: ${c.email}'),
-            Text('Crédito disponible: \$${(c.creditLimit - _totalDebt).toStringAsFixed(2)}'),
+            Text('Crédito disponible: \$${creditDisponible.toStringAsFixed(2)}'),
             Text('Deuda actual: \$${_totalDebt.toStringAsFixed(2)}'),
             SizedBox(height: 24),
             Text('Facturas a crédito:', style: TextStyle(fontWeight: FontWeight.bold)),
             ..._creditSales.map((sale) => ListTile(
               title: Text('Factura #${sale.id}'),
               subtitle: Text('Fecha: ${sale.date.split("T").first}'),
-              trailing: Text('\$${sale.total.toStringAsFixed(2)}'),
+              trailing: Text('\$${sale.amountDue.toStringAsFixed(2)}'),
             )),
             SizedBox(height: 24),
             if (_totalDebt > 0)

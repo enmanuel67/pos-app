@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pos_app/screens/edit_product_screen.dart';
 import '../db/db_helper.dart';
 import '../models/product.dart';
 import 'create_product_screen.dart';
@@ -86,10 +87,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         icon: Icon(Icons.edit),
                         onPressed: () async {
                           await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => CreateProductScreen(product: product),
-                            ),
+                          context,
+                          MaterialPageRoute(
+                           builder: (_) => EditProductScreen(product: product),
+                           ),
                           );
                           await _loadProducts();
                         },

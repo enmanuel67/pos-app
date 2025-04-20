@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pos_app/screens/inventory_screen.dart';
 import 'package:pos_app/screens/billing_screen.dart';
 import 'package:pos_app/screens/clients_screen.dart';
 import 'package:pos_app/screens/report_screen.dart';
@@ -29,6 +30,9 @@ class DashboardScreen extends StatelessWidget {
       }),
       _DashboardItem('Reportes', Icons.receipt, () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => ReportScreen()));
+      }),
+            _DashboardItem('Inventario', Icons.add_shopping_cart, () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => InventoryScreen()));
       }),
     ];
 

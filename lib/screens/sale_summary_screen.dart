@@ -23,6 +23,7 @@ class SaleSummaryScreen extends StatefulWidget {
 
 class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
   late Map<Product, int> _products;
+  Map<int, double> _discounts = {};
   double _total = 0.0;
   Client? _client;
 
@@ -35,15 +36,26 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
   }
 
   void _calculateTotal() {
-    _total = _products.entries
-        .map((e) => e.key.price * e.value)
-        .fold(0.0, (a, b) => a + b);
+    _total = 0.0;
+    _products.forEach((product, qty) {
+      final discount = _discounts[product.id] ?? 0.0;
+      _total += (product.price - discount) * qty;
+    });
     setState(() {});
   }
 
   void _changeQuantity(Product product, int delta) {
+    final currentQty = _products[product] ?? 0;
+    final newQty = currentQty + delta;
+
+    if (delta > 0 && newQty > product.quantity) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Stock insuficiente para ${product.name}')),
+      );
+      return;
+    }
+
     setState(() {
-      int newQty = (_products[product] ?? 0) + delta;
       if (newQty <= 0) {
         _products.remove(product);
       } else {
@@ -51,6 +63,40 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
       }
       _calculateTotal();
     });
+  }
+
+  void _editDiscount(Product product) {
+    final controller = TextEditingController(
+      text: (_discounts[product.id] ?? 0.0).toString(),
+    );
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Descuento para ${product.name}'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: 'Descuento por unidad'),
+        ),
+        actions: [
+          TextButton(
+            child: Text('Cancelar'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          TextButton(
+            child: Text('Aplicar'),
+            onPressed: () {
+              final value = double.tryParse(controller.text.trim()) ?? 0.0;
+              Navigator.pop(context);
+              setState(() {
+                _discounts[product.id!] = value;
+                _calculateTotal();
+              });
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadClient() async {
@@ -63,93 +109,121 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
   }
 
   Future<void> _confirmSale() async {
-  if (widget.isCredit && _client == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('No se puede hacer venta a crédito sin cliente')),
-    );
-    return;
-  }
+    final insufficient = _products.entries.where((entry) => entry.key.quantity < entry.value);
+    if (insufficient.isNotEmpty) {
+      final names = insufficient.map((e) => e.key.name).join(', ');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Stock insuficiente para: $names')),
+      );
+      return;
+    }
 
-  if (widget.isCredit && _client!.creditLimit < _total) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('El total excede el límite de crédito del cliente')),
-    );
-    return;
-  }
+    if (widget.isCredit && widget.clientPhone != null) {
+      final liveClient = await DBHelper.getClientByPhone(widget.clientPhone!);
 
-  final now = DateTime.now().toIso8601String();
-  final sale = Sale(
-    date: now,
-    total: _total,
-    clientPhone: widget.clientPhone,
-    isCredit: widget.isCredit,
-  );
-  final saleId = await DBHelper.insertSale(sale);
+      if (liveClient == null || !liveClient.hasCredit) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Este cliente no tiene crédito habilitado.')),
+        );
+        return;
+      }
 
-  final items = _products.entries.map((entry) {
-    return SaleItem(
-      saleId: saleId,
-      productId: entry.key.id!,
-      quantity: entry.value,
-      subtotal: entry.key.price * entry.value,
-    );
-  }).toList();
+      if (liveClient.creditAvailable < _total) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('El total excede el crédito disponible del cliente')),
+        );
+        return;
+      }
 
-  await DBHelper.insertSaleItems(items);
+      _client = liveClient;
+    }
 
-  // ✅ Reducir inventario por cada producto vendido
-  for (var entry in _products.entries) {
-    await DBHelper().reduceProductStock(entry.key.id!, entry.value);
-  }
+    final now = DateTime.now().toIso8601String();
+    final sale = Sale(
+  date: now,
+  total: _total,
+  amountDue: _total, // 👈 nuevo campo requerido
+  clientPhone: widget.clientPhone,
+  isCredit: widget.isCredit,
+);
+    final saleId = await DBHelper.insertSale(sale);
 
-  if (widget.isCredit && _client != null) {
-    await DBHelper.updateClientCredit(
-      _client!.phone,
-      _client!.credit + _total,
-      _client!.creditAvailable - _total,
-    );
-  }
+    final items = _products.entries.map((entry) {
+      final product = entry.key;
+      final qty = entry.value;
+      final discount = _discounts[product.id] ?? 0.0;
+      final subtotal = (product.price - discount) * qty;
 
-  showDialog(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: Text(widget.isCredit ? 'Factura (Crédito)' : 'Factura (Contado)'),
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_client != null) ...[
-              Text('Cliente: ${_client!.name} ${_client!.lastName}'),
-              Text('Teléfono: ${_client!.phone}'),
-              SizedBox(height: 10),
+      return SaleItem(
+        saleId: saleId,
+        productId: product.id!,
+        quantity: qty,
+        subtotal: subtotal,
+        discount: discount,
+      );
+    }).toList();
+
+    await DBHelper.insertSaleItems(items);
+
+    for (var entry in _products.entries) {
+      await DBHelper().reduceProductStock(entry.key.id!, entry.value);
+    }
+
+    if (widget.isCredit && _client != null) {
+      await DBHelper.updateClientCredit(
+        _client!.phone,
+        _client!.credit + _total,
+        _client!.creditAvailable - _total,
+      );
+    }
+
+    final totalDiscount = _products.entries.fold(0.0, (sum, entry) {
+      final discount = _discounts[entry.key.id] ?? 0.0;
+      return sum + (discount * entry.value);
+    });
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(widget.isCredit ? 'Factura (Crédito)' : 'Factura (Contado)'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_client != null) ...[
+                Text('Cliente: ${_client!.name} ${_client!.lastName}'),
+                Text('Teléfono: ${_client!.phone}'),
+                if (_client!.hasCredit)
+                  Text('Crédito disponible: \$${_client!.creditAvailable.toStringAsFixed(2)}'),
+                SizedBox(height: 10),
+              ],
+              Text('Fecha: ${DateTime.now()}'),
+              Divider(),
+              ..._products.entries.map((entry) {
+                final discount = _discounts[entry.key.id] ?? 0.0;
+                final subtotal = ((entry.key.price - discount) * entry.value).toStringAsFixed(2);
+                return Text('${entry.key.name} x${entry.value} - \$${subtotal} (${discount > 0 ? "Descuento \$${discount.toStringAsFixed(2)} c/u" : "Sin descuento"})');
+              }),
+              Divider(),
+              Text('💸 Descuento total aplicado: \$${totalDiscount.toStringAsFixed(2)}',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Total: \$${_total.toStringAsFixed(2)}',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             ],
-            Text('Fecha: ${DateTime.now()}'),
-            Divider(),
-            ..._products.entries.map((entry) {
-              final product = entry.key;
-              final qty = entry.value;
-              final subtotal = (product.price * qty).toStringAsFixed(2);
-              return Text('${product.name} x$qty - \$${subtotal}');
-            }).toList(),
-            Divider(),
-            Text('Total: \$${_total.toStringAsFixed(2)}',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.popUntil(context, ModalRoute.withName('/'));
+            },
+            child: Text('Aceptar'),
+          )
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            Navigator.popUntil(context, ModalRoute.withName('/'));
-          },
-          child: Text('Aceptar'),
-        ),
-      ],
-    ),
-  );
-}
-
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -157,19 +231,36 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
       appBar: AppBar(title: Text('Resumen de Venta')),
       body: Column(
         children: [
+          if (_client != null) Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Cliente: ${_client!.name} ${_client!.lastName}'),
+                if (_client!.hasCredit)
+                  Text('Crédito disponible: \$${_client!.creditAvailable.toStringAsFixed(2)}'),
+              ],
+            ),
+          ),
           Expanded(
             child: ListView.builder(
               itemCount: _products.length,
               itemBuilder: (_, index) {
                 final product = _products.keys.elementAt(index);
                 final quantity = _products[product]!;
-                final subtotal = product.price * quantity;
+                final discount = _discounts[product.id] ?? 0.0;
+                final subtotal = (product.price - discount) * quantity;
+
                 return ListTile(
                   title: Text(product.name),
                   subtitle: Text('Cantidad: $quantity - Subtotal: \$${subtotal.toStringAsFixed(2)}'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      IconButton(
+                        icon: Icon(Icons.discount),
+                        onPressed: () => _editDiscount(product),
+                      ),
                       IconButton(
                         icon: Icon(Icons.remove),
                         onPressed: () => _changeQuantity(product, -1),

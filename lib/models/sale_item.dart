@@ -4,6 +4,7 @@ class SaleItem {
   final int productId;
   final int quantity;
   final double subtotal;
+  final double discount;
 
   SaleItem({
     this.id,
@@ -11,6 +12,7 @@ class SaleItem {
     required this.productId,
     required this.quantity,
     required this.subtotal,
+    this.discount = 0.0, // por defecto 0 si no hay descuento
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +22,7 @@ class SaleItem {
       'product_id': productId,
       'quantity': quantity,
       'subtotal': subtotal,
+      'discount': discount,
     };
   }
 
@@ -29,7 +32,8 @@ class SaleItem {
       saleId: map['sale_id'],
       productId: map['product_id'],
       quantity: map['quantity'],
-      subtotal: map['subtotal'],
+      subtotal: (map['subtotal'] ?? 0).toDouble(),
+      discount: (map['discount'] ?? 0).toDouble(),
     );
   }
 }

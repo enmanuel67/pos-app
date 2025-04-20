@@ -33,6 +33,8 @@ dependencies:
   sqflite: ^2.3.0
   path: ^1.8.0
   intl: ^0.18.1
+  pdf: ^3.10.4
+  printing: ^5.12.0
 
 
 

@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import '../db/db_helper.dart';
 import '../models/product.dart';
 import '../models/supplier.dart';
+import '../db/db_helper.dart';
 
 class EditProductScreen extends StatefulWidget {
   final Product product;
 
-  EditProductScreen({required this.product});
+  const EditProductScreen({super.key, required this.product});
 
   @override
-  _EditProductScreenState createState() => _EditProductScreenState();
+  State<EditProductScreen> createState() => _EditProductScreenState();
 }
 
 class _EditProductScreenState extends State<EditProductScreen> {
@@ -19,42 +19,50 @@ class _EditProductScreenState extends State<EditProductScreen> {
   late TextEditingController descriptionController;
   late TextEditingController priceController;
   late TextEditingController quantityController;
+  late TextEditingController costController;
+
   List<Supplier> suppliers = [];
-  int? selectedSupplierId;
+  Supplier? selectedSupplier;
 
   @override
   void initState() {
     super.initState();
-    nameController = TextEditingController(text: widget.product.name);
-    barcodeController = TextEditingController(text: widget.product.barcode);
-    descriptionController = TextEditingController(text: widget.product.description);
-    priceController = TextEditingController(text: widget.product.price.toString());
-    quantityController = TextEditingController(text: widget.product.quantity.toString());
-    selectedSupplierId = widget.product.supplierId;
+    final p = widget.product;
+    nameController = TextEditingController(text: p.name);
+    barcodeController = TextEditingController(text: p.barcode);
+    descriptionController = TextEditingController(text: p.description);
+    priceController = TextEditingController(text: p.price.toString());
+    quantityController = TextEditingController(text: p.quantity.toString());
+    costController = TextEditingController(text: p.cost.toString());
     _loadSuppliers();
   }
 
-  void _loadSuppliers() async {
-    final data = await DBHelper.getSuppliers();
+  Future<void> _loadSuppliers() async {
+    final result = await DBHelper.getSuppliers();
     setState(() {
-      suppliers = data;
+      suppliers = result;
+      selectedSupplier = suppliers.firstWhere(
+        (s) => s.id == widget.product.supplierId,
+        orElse: () => suppliers.first,
+      );
     });
   }
 
-  void _saveChanges() async {
+  Future<void> _updateProduct() async {
     if (_formKey.currentState!.validate()) {
-      final updatedProduct = Product(
+      final updated = Product(
         id: widget.product.id,
         name: nameController.text.trim(),
         barcode: barcodeController.text.trim(),
         description: descriptionController.text.trim(),
-        price: double.tryParse(priceController.text) ?? 0,
-        quantity: int.tryParse(quantityController.text) ?? 0,
-        supplierId: selectedSupplierId,
+        price: double.tryParse(priceController.text.trim()) ?? 0.0,
+        quantity: int.tryParse(quantityController.text.trim()) ?? 0,
+        cost: double.tryParse(costController.text.trim()) ?? 0.0,
+        supplierId: selectedSupplier!.id!,
+        createdAt: DateTime.now().toIso8601String(), // <-- AGREGA ESTA LÍNEA
       );
 
-      await DBHelper.updateProduct(updatedProduct);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Producto actualizado')));
+      await DBHelper.updateProduct(updated);
       Navigator.pop(context, true);
     }
   }
@@ -64,7 +72,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
     return Scaffold(
       appBar: AppBar(title: Text('Editar Producto')),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: ListView(
@@ -72,11 +80,11 @@ class _EditProductScreenState extends State<EditProductScreen> {
               TextFormField(
                 controller: nameController,
                 decoration: InputDecoration(labelText: 'Nombre'),
-                validator: (value) => value!.isEmpty ? 'Campo requerido' : null,
+                validator: (value) => value!.isEmpty ? 'Requerido' : null,
               ),
               TextFormField(
                 controller: barcodeController,
-                decoration: InputDecoration(labelText: 'Código de Barra'),
+                decoration: InputDecoration(labelText: 'Código de barra'),
               ),
               TextFormField(
                 controller: descriptionController,
@@ -84,7 +92,12 @@ class _EditProductScreenState extends State<EditProductScreen> {
               ),
               TextFormField(
                 controller: priceController,
-                decoration: InputDecoration(labelText: 'Precio'),
+                decoration: InputDecoration(labelText: 'Precio de venta'),
+                keyboardType: TextInputType.number,
+              ),
+              TextFormField(
+                controller: costController,
+                decoration: InputDecoration(labelText: 'Costo unitario'),
                 keyboardType: TextInputType.number,
               ),
               TextFormField(
@@ -92,21 +105,20 @@ class _EditProductScreenState extends State<EditProductScreen> {
                 decoration: InputDecoration(labelText: 'Cantidad'),
                 keyboardType: TextInputType.number,
               ),
-              DropdownButtonFormField<int>(
-                value: selectedSupplierId,
-                items: suppliers.map((supplier) {
-                  return DropdownMenuItem<int>(
-                    value: supplier.id,
-                    child: Text(supplier.name),
-                  );
-                }).toList(),
-                onChanged: (value) => setState(() => selectedSupplierId = value),
+              DropdownButtonFormField<Supplier>(
+                value: selectedSupplier,
                 decoration: InputDecoration(labelText: 'Proveedor'),
+                items: suppliers.map((s) {
+                  return DropdownMenuItem(value: s, child: Text(s.name));
+                }).toList(),
+                onChanged: (val) {
+                  setState(() => selectedSupplier = val);
+                },
               ),
-              SizedBox(height: 24),
+              SizedBox(height: 20),
               ElevatedButton(
-                onPressed: _saveChanges,
-                child: Text('Guardar Cambios'),
+                onPressed: _updateProduct,
+                child: Text('Actualizar'),
               )
             ],
           ),
