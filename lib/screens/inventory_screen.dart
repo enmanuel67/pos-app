@@ -111,114 +111,125 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Ingreso a Inventario')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _barcodeController,
-              decoration: InputDecoration(
-                labelText: 'Código de barra',
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: _searchProductByBarcode,
-                ),
-              ),
-              onSubmitted: (_) => _searchProductByBarcode(),
-            ),
-            const SizedBox(height: 10),
-
-            if (_selectedProduct != null) ...[
-              Text('Nombre: ${_selectedProduct!.name}'),
-              Text('Descripción: ${_selectedProduct!.description}'),
-              Text('Precio actual: \$${_selectedProduct!.price}'),
-              Text('Cantidad actual: ${_selectedProduct!.quantity}'),
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: _costController,
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Costo unitario'),
-              ),
-              TextField(
-                controller: _priceController,
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Precio de venta'),
-              ),
-              TextField(
-                controller: _quantityController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Cantidad a agregar'),
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                onPressed: _addToInventoryList,
-                child: const Text('Agregar a la lista'),
-              ),
-              const Divider(),
-            ],
-
-            if (_notFoundBarcode != null) ...[
-              const SizedBox(height: 10),
-              Center(
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.add_box_outlined),
-                  label: const Text('Crear nuevo producto'),
-                  onPressed: () async {
-  final created = await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => CreateProductScreen(initialBarcode: _notFoundBarcode!),
-    ),
-  );
-
-  if (created == true) {
-    // Buscar de nuevo el producto creado por el código de barra
-    _searchProductByBarcode();
-  }
-},
-
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Divider(),
-            ],
-
-            const Text('Productos por agregar:', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView.builder(
-                itemCount: _inventoryList.length,
-                itemBuilder: (_, index) {
-                  final item = _inventoryList[index];
-                  final product = item['product'] as Product;
-                  final quantity = item['quantity'];
-                  final cost = item['cost'];
-                  final price = item['price'];
-                  final total = (cost * quantity).toStringAsFixed(2);
-
-                  return ListTile(
-                    title: Text(product.name),
-                    subtitle: Text(
-                      'Cantidad: $quantity | Costo: \$${cost.toStringAsFixed(2)} | Precio: \$${price.toStringAsFixed(2)}',
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _barcodeController,
+                      decoration: InputDecoration(
+                        labelText: 'Código de barra',
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.search),
+                          onPressed: _searchProductByBarcode,
+                        ),
+                      ),
+                      onSubmitted: (_) => _searchProductByBarcode(),
                     ),
-                    trailing: Text('Total: \$${total}'),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 10),
-            if (_inventoryList.isNotEmpty)
-              Center(
-                child: ElevatedButton.icon(
-                  onPressed: _confirmInventory,
-                  icon: const Icon(Icons.inventory),
-                  label: const Text('Confirmar ingreso a inventario'),
+                    const SizedBox(height: 10),
+
+                    if (_selectedProduct != null) ...[
+                      Text('Nombre: ${_selectedProduct!.name}'),
+                      Text('Descripción: ${_selectedProduct!.description}'),
+                      Text('Precio actual: \$${_selectedProduct!.price}'),
+                      Text('Cantidad actual: ${_selectedProduct!.quantity}'),
+                      const SizedBox(height: 10),
+
+                      TextField(
+                        controller: _costController,
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(labelText: 'Costo unitario'),
+                      ),
+                      TextField(
+                        controller: _priceController,
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(labelText: 'Precio de venta'),
+                      ),
+                      TextField(
+                        controller: _quantityController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Cantidad a agregar'),
+                      ),
+                      const SizedBox(height: 10),
+                      ElevatedButton(
+                        onPressed: _addToInventoryList,
+                        child: const Text('Agregar a la lista'),
+                      ),
+                      const Divider(),
+                    ],
+
+                    if (_notFoundBarcode != null) ...[
+                      const SizedBox(height: 10),
+                      Center(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.add_box_outlined),
+                          label: const Text('Crear nuevo producto'),
+                          onPressed: () async {
+                            final created = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CreateProductScreen(initialBarcode: _notFoundBarcode!),
+                              ),
+                            );
+
+                            if (created == true) {
+                              _searchProductByBarcode();
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Divider(),
+                    ],
+
+                    const Text('Productos por agregar:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    SizedBox(
+  height: 300, // Puedes ajustar esta altura si lo necesitas
+  child: ListView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: _inventoryList.length,
+    itemBuilder: (_, index) {
+      final item = _inventoryList[index];
+      final product = item['product'] as Product;
+      final quantity = item['quantity'];
+      final cost = item['cost'];
+      final price = item['price'];
+      final total = (cost * quantity).toStringAsFixed(2);
+
+      return ListTile(
+        title: Text(product.name),
+        subtitle: Text(
+          'Cantidad: $quantity | Costo: \$${cost.toStringAsFixed(2)} | Precio: \$${price.toStringAsFixed(2)}',
+        ),
+        trailing: Text('Total: \$${total}'),
+      );
+    },
+  ),
+),
+
+                    const SizedBox(height: 10),
+                    if (_inventoryList.isNotEmpty)
+                      Center(
+                        child: ElevatedButton.icon(
+                          onPressed: _confirmInventory,
+                          icon: const Icon(Icons.inventory),
+                          label: const Text('Confirmar ingreso a inventario'),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-          ],
-        ),
+            ),
+          );
+        },
       ),
     );
   }
