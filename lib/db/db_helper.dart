@@ -5,6 +5,8 @@ import '../models/supplier.dart';
 import '../models/client.dart';
 import '../models/sale.dart';
 import '../models/sale_item.dart';
+import '../models/expense.dart';
+import '../models/expense_entry.dart';
 import '../notifiers/inventory_notifier.dart';
 
 class DBHelper {
@@ -103,6 +105,25 @@ class DBHelper {
   FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
 )
         ''');
+
+        await db.execute('''
+  CREATE TABLE expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT
+  )
+''');
+
+await db.execute('''
+  CREATE TABLE expense_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expense_id INTEGER,
+    amount REAL,
+    date TEXT,
+    FOREIGN KEY (expense_id) REFERENCES expenses(id)
+  )
+''');
+
+
       },
     );
   }
@@ -560,4 +581,50 @@ static Future<int> getNotificationCount() async {
     }
     return null;
   }
+
+    // ───────────────EXPENSES ───────────────
+    // Insertar gasto
+static Future<int> insertExpense(Expense expense) async {
+  final dbClient = await db;
+  return await dbClient.insert('expenses', expense.toMap());
+}
+
+static Future<List<Expense>> getExpenses() async {
+  final dbClient = await db;
+  final result = await dbClient.query('expenses');
+  return result.map((e) => Expense.fromMap(e)).toList();
+}
+
+static Future<int> insertExpenseEntry(ExpenseEntry entry) async {
+  final dbClient = await db;
+  return await dbClient.insert('expense_entries', entry.toMap());
+}
+
+static Future<List<ExpenseEntry>> getEntriesByExpenseId(int expenseId) async {
+  final dbClient = await db;
+  final result = await dbClient.query(
+    'expense_entries',
+    where: 'expense_id = ?',
+    whereArgs: [expenseId],
+  );
+  return result.map((e) => ExpenseEntry.fromMap(e)).toList();
+}
+
+static Future<List<Map<String, dynamic>>> getExpenseHistory() async {
+  final dbClient = await db;
+
+  final result = await dbClient.rawQuery('''
+    SELECT e.name AS expense_name, ee.amount, ee.date
+    FROM expense_entries ee
+    JOIN expenses e ON ee.expense_id = e.id
+    ORDER BY ee.date DESC
+  ''');
+
+  return result.map((row) => {
+    'expense_name': row['expense_name'],
+    'amount': row['amount'],
+    'date': row['date'],
+  }).toList();
+}
+
 }
