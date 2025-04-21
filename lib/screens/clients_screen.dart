@@ -3,7 +3,6 @@ import '../models/client.dart';
 import '../db/db_helper.dart';
 import 'create_client_screen.dart';
 import 'client_profile_screen.dart';
-import '../models/sale.dart';
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});

@@ -7,6 +7,9 @@ class Sale {
   final bool isCredit;
   final bool isPaid;
 
+  // ⚠️ Campo temporal para reportes (NO se guarda en la BD)
+  double? discount;
+
   Sale({
     this.id,
     required this.date,
@@ -15,6 +18,7 @@ class Sale {
     this.clientPhone,
     required this.isCredit,
     this.isPaid = false,
+    this.discount,
   });
 
   Map<String, dynamic> toMap() {

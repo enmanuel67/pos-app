@@ -71,31 +71,32 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
     );
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text('Descuento para ${product.name}'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: 'Descuento por unidad'),
-        ),
-        actions: [
-          TextButton(
-            child: Text('Cancelar'),
-            onPressed: () => Navigator.pop(context),
+      builder:
+          (_) => AlertDialog(
+            title: Text('Descuento para ${product.name}'),
+            content: TextField(
+              controller: controller,
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: 'Descuento por unidad'),
+            ),
+            actions: [
+              TextButton(
+                child: Text('Cancelar'),
+                onPressed: () => Navigator.pop(context),
+              ),
+              TextButton(
+                child: Text('Aplicar'),
+                onPressed: () {
+                  final value = double.tryParse(controller.text.trim()) ?? 0.0;
+                  Navigator.pop(context);
+                  setState(() {
+                    _discounts[product.id!] = value;
+                    _calculateTotal();
+                  });
+                },
+              ),
+            ],
           ),
-          TextButton(
-            child: Text('Aplicar'),
-            onPressed: () {
-              final value = double.tryParse(controller.text.trim()) ?? 0.0;
-              Navigator.pop(context);
-              setState(() {
-                _discounts[product.id!] = value;
-                _calculateTotal();
-              });
-            },
-          ),
-        ],
-      ),
     );
   }
 
@@ -109,7 +110,9 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
   }
 
   Future<void> _confirmSale() async {
-    final insufficient = _products.entries.where((entry) => entry.key.quantity < entry.value);
+    final insufficient = _products.entries.where(
+      (entry) => entry.key.quantity < entry.value,
+    );
     if (insufficient.isNotEmpty) {
       final names = insufficient.map((e) => e.key.name).join(', ');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -130,7 +133,9 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
 
       if (liveClient.creditAvailable < _total) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('El total excede el crédito disponible del cliente')),
+          SnackBar(
+            content: Text('El total excede el crédito disponible del cliente'),
+          ),
         );
         return;
       }
@@ -140,28 +145,29 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
 
     final now = DateTime.now().toIso8601String();
     final sale = Sale(
-  date: now,
-  total: _total,
-  amountDue: _total, // 👈 nuevo campo requerido
-  clientPhone: widget.clientPhone,
-  isCredit: widget.isCredit,
-);
+      date: now,
+      total: _total,
+      amountDue: _total, // 👈 nuevo campo requerido
+      clientPhone: widget.clientPhone,
+      isCredit: widget.isCredit,
+    );
     final saleId = await DBHelper.insertSale(sale);
 
-    final items = _products.entries.map((entry) {
-      final product = entry.key;
-      final qty = entry.value;
-      final discount = _discounts[product.id] ?? 0.0;
-      final subtotal = (product.price - discount) * qty;
+    final items =
+        _products.entries.map((entry) {
+          final product = entry.key;
+          final qty = entry.value;
+          final discount = _discounts[product.id] ?? 0.0;
+          final subtotal = (product.price - discount) * qty;
 
-      return SaleItem(
-        saleId: saleId,
-        productId: product.id!,
-        quantity: qty,
-        subtotal: subtotal,
-        discount: discount,
-      );
-    }).toList();
+          return SaleItem(
+            saleId: saleId,
+            productId: product.id!,
+            quantity: qty,
+            subtotal: subtotal,
+            discount: discount,
+          );
+        }).toList();
 
     await DBHelper.insertSaleItems(items);
 
@@ -184,44 +190,53 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(widget.isCredit ? 'Factura (Crédito)' : 'Factura (Contado)'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_client != null) ...[
-                Text('Cliente: ${_client!.name} ${_client!.lastName}'),
-                Text('Teléfono: ${_client!.phone}'),
-                if (_client!.hasCredit)
-                  Text('Crédito disponible: \$${_client!.creditAvailable.toStringAsFixed(2)}'),
-                SizedBox(height: 10),
-              ],
-              Text('Fecha: ${DateTime.now()}'),
-              Divider(),
-              ..._products.entries.map((entry) {
-                final discount = _discounts[entry.key.id] ?? 0.0;
-                final subtotal = ((entry.key.price - discount) * entry.value).toStringAsFixed(2);
-                return Text('${entry.key.name} x${entry.value} - \$${subtotal} (${discount > 0 ? "Descuento \$${discount.toStringAsFixed(2)} c/u" : "Sin descuento"})');
-              }),
-              Divider(),
-              Text('💸 Descuento total aplicado: \$${totalDiscount.toStringAsFixed(2)}',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              Text('Total: \$${_total.toStringAsFixed(2)}',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+      builder:
+          (_) => AlertDialog(
+            title: Text(
+              widget.isCredit ? 'Factura (Crédito)' : 'Factura (Contado)',
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_client != null) ...[
+                    Text('Cliente: ${_client!.name} ${_client!.lastName}'),
+                    Text('Teléfono: ${_client!.phone}'),
+                    SizedBox(height: 10),
+                  ],
+                  Text('Fecha: ${DateTime.now()}'),
+                  Divider(),
+                  ..._products.entries.map((entry) {
+                    final discount = _discounts[entry.key.id] ?? 0.0;
+                    final subtotal = ((entry.key.price - discount) *
+                            entry.value)
+                        .toStringAsFixed(2);
+                    return Text(
+                      '${entry.key.name} x${entry.value} - \$${subtotal} (${discount > 0 ? "Descuento \$${discount.toStringAsFixed(2)} c/u" : "Sin descuento"})',
+                    );
+                  }),
+                  Divider(),
+                  Text(
+                    '💸 Descuento total aplicado: \$${totalDiscount.toStringAsFixed(2)}',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    'Total: \$${_total.toStringAsFixed(2)}',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.popUntil(context, ModalRoute.withName('/'));
+                },
+                child: Text('Aceptar'),
+              ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.popUntil(context, ModalRoute.withName('/'));
-            },
-            child: Text('Aceptar'),
-          )
-        ],
-      ),
     );
   }
 
@@ -231,17 +246,20 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
       appBar: AppBar(title: Text('Resumen de Venta')),
       body: Column(
         children: [
-          if (_client != null) Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Cliente: ${_client!.name} ${_client!.lastName}'),
-                if (_client!.hasCredit)
-                  Text('Crédito disponible: \$${_client!.creditAvailable.toStringAsFixed(2)}'),
-              ],
+          if (_client != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Cliente: ${_client!.name} ${_client!.lastName}'),
+                  if (_client!.hasCredit)
+                    Text(
+                      'Crédito disponible: \$${_client!.creditAvailable.toStringAsFixed(2)}',
+                    ),
+                ],
+              ),
             ),
-          ),
           Expanded(
             child: ListView.builder(
               itemCount: _products.length,
@@ -253,7 +271,9 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
 
                 return ListTile(
                   title: Text(product.name),
-                  subtitle: Text('Cantidad: $quantity - Subtotal: \$${subtotal.toStringAsFixed(2)}'),
+                  subtitle: Text(
+                    'Cantidad: $quantity - Subtotal: \$${subtotal.toStringAsFixed(2)}',
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -280,7 +300,10 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Total: \$${_total.toStringAsFixed(2)}', style: TextStyle(fontSize: 18)),
+                Text(
+                  'Total: \$${_total.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 18),
+                ),
                 ElevatedButton(
                   onPressed: _products.isEmpty ? null : _confirmSale,
                   child: Text('Confirmar Venta'),

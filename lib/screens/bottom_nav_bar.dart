@@ -15,6 +15,7 @@ class BottomNavBar extends StatefulWidget {
 class _BottomNavBarState extends State<BottomNavBar> with RouteAware {
   int _currentIndex = 0;
   List<Product> lowStockProducts = [];
+  int overdueInvoiceCount = 0;
 
   final PageController _pageController = PageController();
 
@@ -22,7 +23,7 @@ class _BottomNavBarState extends State<BottomNavBar> with RouteAware {
   void didChangeDependencies() {
     super.didChangeDependencies();
     routeObserver.subscribe(this, ModalRoute.of(context)!);
-    _loadLowStockProducts();
+    _loadNotifications();
   }
 
   @override
@@ -34,16 +35,18 @@ class _BottomNavBarState extends State<BottomNavBar> with RouteAware {
 
   @override
   void didPopNext() {
-    // Se llama cuando se vuelve a esta pantalla desde otra
-    _loadLowStockProducts();
+    _loadNotifications();
   }
 
-  Future<void> _loadLowStockProducts() async {
+  Future<void> _loadNotifications() async {
     final result = await DBHelper.getProducts();
+    final overdue = await DBHelper.getOverdueCreditInvoices();
+
     if (!mounted) return;
 
     setState(() {
       lowStockProducts = result.where((p) => p.quantity <= 5).toList();
+      overdueInvoiceCount = overdue.length;
     });
   }
 
@@ -53,6 +56,8 @@ class _BottomNavBarState extends State<BottomNavBar> with RouteAware {
       const DashboardScreen(),
       const NotificationsScreen(),
     ];
+
+    final totalNotifications = lowStockProducts.length + overdueInvoiceCount;
 
     return Scaffold(
       body: screens[_currentIndex],
@@ -64,8 +69,7 @@ class _BottomNavBarState extends State<BottomNavBar> with RouteAware {
           });
 
           if (index == 0) {
-            // Volvemos a dashboard
-            await _loadLowStockProducts();
+            await _loadNotifications();
           }
         },
         items: [
@@ -77,7 +81,7 @@ class _BottomNavBarState extends State<BottomNavBar> with RouteAware {
             icon: Stack(
               children: [
                 const Icon(Icons.notifications),
-                if (lowStockProducts.isNotEmpty)
+                if (totalNotifications > 0)
                   Positioned(
                     right: 0,
                     top: 0,
@@ -92,7 +96,7 @@ class _BottomNavBarState extends State<BottomNavBar> with RouteAware {
                         minHeight: 13,
                       ),
                       child: Text(
-                        '${lowStockProducts.length}',
+                        '$totalNotifications',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 10,

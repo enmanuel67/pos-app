@@ -452,6 +452,66 @@ static Future<void> markSaleAsPaid(int saleId, double paymentAmount) async {
   );
 }
 
+static Future<List<Map<String, dynamic>>> getOverdueCreditInvoices() async {
+  final dbClient = await db;
+  final today = DateTime.now();
+  final fifteenDaysAgo = today.subtract(const Duration(days: 15));
+
+  final result = await dbClient.query(
+    'sales',
+    where: 'isCredit = 1 AND isPaid = 0 AND date <= ?',
+    whereArgs: [fifteenDaysAgo.toIso8601String()],
+  );
+
+  List<Map<String, dynamic>> overdueInvoices = [];
+
+  for (var sale in result) {
+    final clientPhone = sale['clientPhone'];
+    final clientResult = await dbClient.query(
+      'clients',
+      where: 'phone = ?',
+      whereArgs: [clientPhone as String], // ✅ cast corregido aquí
+      limit: 1,
+    );
+
+    if (clientResult.isNotEmpty) {
+      final client = clientResult.first;
+      final saleDate = DateTime.parse(sale['date'] as String);
+      final daysOverdue = today.difference(saleDate).inDays;
+
+      overdueInvoices.add({
+        'clientName': '${client['name']} ${client['lastName']}',
+        'amountDue': sale['amountDue'],
+        'daysOverdue': daysOverdue,
+      });
+    }
+  }
+
+  return overdueInvoices;
+}
+
+
+
+static Future<int> getNotificationCount() async {
+  int lowStockCount = 0;
+  int overdueCount = 0;
+
+  final products = await getProducts();
+  lowStockCount = products.where((p) => p.quantity <= 5).length;
+
+  final sales = await getAllSales();
+  final today = DateTime.now();
+  for (var sale in sales) {
+    if (sale.isCredit && !sale.isPaid && sale.clientPhone != null) {
+      final date = DateTime.parse(sale.date);
+      final difference = today.difference(date).inDays;
+      if (difference >= 15) overdueCount++;
+    }
+  }
+
+  return lowStockCount + overdueCount;
+}
+
 
   // ─────────────── SALES ───────────────
   static Future<int> insertSale(Sale sale) async {

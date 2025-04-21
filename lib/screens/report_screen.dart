@@ -22,6 +22,8 @@ class _ReportScreenState extends State<ReportScreen> {
   double creditTotal = 0;
   double cashTotal = 0;
   double profitTotal = 0;
+  double creditPaymentsTotal = 0;
+  double totalDiscounts = 0;
 
   @override
   void initState() {
@@ -68,28 +70,43 @@ class _ReportScreenState extends State<ReportScreen> {
       double credit = 0;
       double cash = 0;
       double profit = 0;
+      double payments = 0;
+      double discounts = 0;
 
       for (var s in filtered) {
+        final items = await DBHelper.getSaleItems(s.id!);
+
+        double discountAmount = 0;
+        for (var item in items) {
+          discountAmount += item.discount * item.quantity;
+        }
+
         if (s.isCredit) {
           credit += s.total;
+          final paid = s.total - s.amountDue;
+          payments += paid;
         } else {
           cash += s.total;
         }
 
-        final items = await DBHelper.getSaleItems(s.id!);
         for (var item in items) {
           final product = await DBHelper.getProductById(item.productId);
           final cost = product?.cost ?? 0;
-          final gain = ((item.subtotal / item.quantity) - item.discount - cost) * item.quantity;
+          final gain = ((item.subtotal / item.quantity) - cost) * item.quantity;
           profit += gain;
         }
+
+        s.discount = discountAmount;
+        discounts += discountAmount;
       }
 
       setState(() {
         _filteredSales = filtered;
         creditTotal = credit;
         cashTotal = cash;
+        creditPaymentsTotal = payments;
         profitTotal = profit;
+        totalDiscounts = discounts;
       });
 
       _showSalesPreview();
@@ -171,7 +188,15 @@ class _ReportScreenState extends State<ReportScreen> {
               const Text('🧾 Facturas:', style: TextStyle(fontWeight: FontWeight.bold)),
               ..._filteredSales.map((sale) => ListTile(
                 title: Text('Factura #${sale.id}'),
-                subtitle: Text('Fecha: ${DateFormat('yyyy-MM-dd').format(DateTime.parse(sale.date))}'),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Fecha: ${DateFormat('yyyy-MM-dd').format(DateTime.parse(sale.date))}'),
+                    Text('Tipo: ${sale.isCredit ? "Crédito" : "Contado"}'),
+                    if ((sale.discount ?? 0) > 0)
+                      Text('Descuento: \$${sale.discount!.toStringAsFixed(2)}'),
+                  ],
+                ),
                 trailing: Text('\$${sale.total.toStringAsFixed(2)}'),
               )),
               const Divider(),
@@ -179,6 +204,8 @@ class _ReportScreenState extends State<ReportScreen> {
               Text('Total en Ventas a Crédito: \$${creditTotal.toStringAsFixed(2)}'),
               Text('Total en Ventas al Contado: \$${cashTotal.toStringAsFixed(2)}'),
               Text('Total General de Ventas: \$${total.toStringAsFixed(2)}'),
+              Text('Pagos realizados a facturas a crédito: \$${creditPaymentsTotal.toStringAsFixed(2)}'),
+              Text('Total Descuentos Aplicados: \$${totalDiscounts.toStringAsFixed(2)}'),
               Text('Ganancia Total: \$${profitTotal.toStringAsFixed(2)}'),
             ],
           ),
