@@ -610,15 +610,19 @@ static Future<List<ExpenseEntry>> getEntriesByExpenseId(int expenseId) async {
   return result.map((e) => ExpenseEntry.fromMap(e)).toList();
 }
 
-static Future<List<Map<String, dynamic>>> getExpenseHistory() async {
+static Future<List<Map<String, dynamic>>> getExpenseHistory(DateTime startDate, DateTime endDate) async {
   final dbClient = await db;
 
   final result = await dbClient.rawQuery('''
     SELECT e.name AS expense_name, ee.amount, ee.date
     FROM expense_entries ee
     JOIN expenses e ON ee.expense_id = e.id
+    WHERE date(ee.date) BETWEEN ? AND ?
     ORDER BY ee.date DESC
-  ''');
+  ''', [
+    startDate.toIso8601String().split('T').first,
+    endDate.toIso8601String().split('T').first,
+  ]);
 
   return result.map((row) => {
     'expense_name': row['expense_name'],
@@ -627,4 +631,142 @@ static Future<List<Map<String, dynamic>>> getExpenseHistory() async {
   }).toList();
 }
 
+
+//reportes
+static Future<List<Map<String, dynamic>>> getPagosCreditoBetweenDates(DateTime start, DateTime end) async {
+  final dbClient = await db;
+
+  final result = await dbClient.query(
+    'credit_payments',
+    where: 'date BETWEEN ? AND ?',
+    whereArgs: [start.toIso8601String(), end.add(Duration(days: 1)).toIso8601String()],
+  );
+
+  return result;
+}
+
+static Future<List<Map<String, dynamic>>> getProductSalesReport(DateTime start, DateTime end) async {
+  final dbClient = await db;
+
+  final result = await dbClient.rawQuery('''
+    SELECT 
+      p.name AS product_name,
+      SUM(si.quantity) AS total_quantity,
+      SUM(si.subtotal) AS total_sales,
+      SUM(CASE WHEN si.discount > 0 THEN 1 ELSE 0 END) AS discount_applied
+    FROM sale_items si
+    JOIN sales s ON si.sale_id = s.id
+    JOIN products p ON si.product_id = p.id
+    WHERE date(s.date) BETWEEN ? AND ?
+    GROUP BY si.product_id
+    ORDER BY total_quantity DESC
+  ''', [
+    start.toIso8601String().split('T').first,
+    end.toIso8601String().split('T').first,
+  ]);
+
+  return result;
+}
+
+static Future<Map<String, dynamic>> getResumenGeneral(DateTime start, DateTime end) async {
+  final dbClient = await db;
+
+  // Ventas filtradas por fecha
+  final sales = await dbClient.query(
+    'sales',
+    where: 'date BETWEEN ? AND ?',
+    whereArgs: [
+      start.toIso8601String(),
+      end.add(const Duration(days: 1)).toIso8601String(),
+    ],
+  );
+
+  int totalFacturas = sales.length;
+  double totalVentas = 0;
+  double pagosCredito = 0;
+  double descuentos = 0;
+  double ganancia = 0;
+  int productosVendidos = 0;
+
+  for (var sale in sales) {
+    totalVentas += sale['total'] as double;
+
+    final saleId = sale['id'] as int;
+    final items = await dbClient.query('sale_items', where: 'sale_id = ?', whereArgs: [saleId]);
+
+    for (var item in items) {
+      final quantity = item['quantity'] as int;
+      final subtotal = item['subtotal'] as double;
+      final discount = item['discount'] as double;
+      final productId = item['product_id'] as int;
+
+      productosVendidos += quantity;
+      descuentos += discount * quantity;
+
+      final product = await dbClient.query('products', where: 'id = ?', whereArgs: [productId]);
+      if (product.isNotEmpty) {
+        final cost = product.first['cost'] as double;
+        ganancia += ((subtotal / quantity) - cost) * quantity;
+      }
+    }
+
+    if ((sale['isCredit'] as int) == 1) {
+      pagosCredito += (sale['total'] as double) - (sale['amountDue'] as double);
+    }
+  }
+
+  // Entradas de inventario
+  final inventory = await dbClient.query(
+    'inventory_entries',
+    where: 'date BETWEEN ? AND ?',
+    whereArgs: [
+      start.toIso8601String(),
+      end.add(const Duration(days: 1)).toIso8601String(),
+    ],
+  );
+
+  double totalInventario = inventory.fold(0.0, (sum, e) =>
+      sum + ((e['cost'] as double) * (e['quantity'] as int)));
+
+  // Gastos
+  final gastos = await dbClient.rawQuery('''
+    SELECT SUM(ee.amount) as totalGastos
+    FROM expense_entries ee
+    WHERE date(ee.date) BETWEEN ? AND ?
+  ''', [
+    start.toIso8601String().split('T').first,
+    end.toIso8601String().split('T').first,
+  ]);
+
+  double totalGastos = gastos.first['totalGastos'] != null
+      ? (gastos.first['totalGastos'] as num).toDouble()
+      : 0.0;
+
+  return {
+    'facturas': totalFacturas,
+    'ventas': totalVentas,
+    'pagos_credito': pagosCredito,
+    'descuentos': descuentos,
+    'ganancia': ganancia,
+    'productos': productosVendidos,
+    'inventario': totalInventario,
+    'gastos': totalGastos,
+  };
+}
+
+static Future<List<Map<String, dynamic>>> getFacturasPorCliente(String phone, DateTime start, DateTime end) async {
+  final dbClient = await db;
+
+  final result = await dbClient.query(
+    'sales',
+    where: 'clientPhone = ? AND date BETWEEN ? AND ?',
+    whereArgs: [
+      phone,
+      start.toIso8601String(),
+      end.add(const Duration(days: 1)).toIso8601String(),
+    ],
+  );
+
+  return result;
+}
 }

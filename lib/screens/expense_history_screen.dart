@@ -25,12 +25,17 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
   }
 
   Future<void> _loadExpenseHistory() async {
-    final expenses = await DBHelper.getExpenseHistory();
-    setState(() {
-      _allExpenses = expenses;
-      _applyFilters();
-    });
-  }
+  final now = DateTime.now();
+  _startDate = DateTime(now.year, now.month, now.day);
+  _endDate = DateTime(now.year, now.month, now.day);
+
+  final expenses = await DBHelper.getExpenseHistory(_startDate!, _endDate!);
+  setState(() {
+    _allExpenses = expenses;
+    _applyFilters();
+  });
+}
+
 
   void _applyFilters() {
     final query = _searchController.text.toLowerCase();
