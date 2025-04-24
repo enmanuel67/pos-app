@@ -47,7 +47,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
     setState(() {
-      _lowStockProducts = products.where((p) => p.quantity <= 5).toList();
+      _lowStockProducts =
+          products
+              .where((p) => p.quantity <= 5 && (p.isRentable != true))
+              .toList(); // ✅ Aquí se filtran los rentables
       _overdueInvoices = overdue;
     });
   }

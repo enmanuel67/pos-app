@@ -20,6 +20,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
   late TextEditingController priceController;
   late TextEditingController quantityController;
   late TextEditingController costController;
+  late String selectedBusinessType;
 
   List<Supplier> suppliers = [];
   Supplier? selectedSupplier;
@@ -35,6 +36,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
     quantityController = TextEditingController(text: p.quantity.toString());
     costController = TextEditingController(text: p.cost.toString());
     _loadSuppliers();
+    selectedBusinessType = widget.product.businessType ?? 'A';
   }
 
   Future<void> _loadSuppliers() async {
@@ -60,6 +62,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
         cost: double.tryParse(costController.text.trim()) ?? 0.0,
         supplierId: selectedSupplier!.id!,
         createdAt: DateTime.now().toIso8601String(), // <-- AGREGA ESTA LÍNEA
+        businessType: selectedBusinessType,
       );
 
       await DBHelper.updateProduct(updated);
@@ -108,18 +111,35 @@ class _EditProductScreenState extends State<EditProductScreen> {
               DropdownButtonFormField<Supplier>(
                 value: selectedSupplier,
                 decoration: InputDecoration(labelText: 'Proveedor'),
-                items: suppliers.map((s) {
-                  return DropdownMenuItem(value: s, child: Text(s.name));
-                }).toList(),
+                items:
+                    suppliers.map((s) {
+                      return DropdownMenuItem(value: s, child: Text(s.name));
+                    }).toList(),
                 onChanged: (val) {
                   setState(() => selectedSupplier = val);
                 },
+              ),
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(labelText: 'Negocio'),
+                value: selectedBusinessType,
+                items: const [
+                  DropdownMenuItem(value: 'Decoyamix', child: Text('Decoyamix')),
+                  DropdownMenuItem(value: 'EnmaYami', child: Text('EnmaYami')),
+                  DropdownMenuItem(value: 'Decoyamix(hogar)', child: Text('Decoyamix(hogar)')),
+                ],
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => selectedBusinessType = val);
+                  }
+                },
+                validator:
+                    (val) => val == null ? 'Selecciona un negocio' : null,
               ),
               SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _updateProduct,
                 child: Text('Actualizar'),
-              )
+              ),
             ],
           ),
         ),

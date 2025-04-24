@@ -172,9 +172,13 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
     await DBHelper.insertSaleItems(items);
 
     for (var entry in _products.entries) {
-      await DBHelper().reduceProductStock(entry.key.id!, entry.value);
-    }
+      final product = entry.key;
+      final cantidadVendida = entry.value;
 
+      if (product.isRentable != true) {
+        await DBHelper().reduceProductStock(product.id!, cantidadVendida);
+      }
+    }
     if (widget.isCredit && _client != null) {
       await DBHelper.updateClientCredit(
         _client!.phone,
@@ -207,14 +211,20 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
                   Text('Fecha: ${DateTime.now()}'),
                   Divider(),
                   ..._products.entries.map((entry) {
-                    final discount = _discounts[entry.key.id] ?? 0.0;
-                    final subtotal = ((entry.key.price - discount) *
-                            entry.value)
+                    final product = entry.key;
+                    final quantity = entry.value;
+                    final discount = _discounts[product.id] ?? 0.0;
+                    final subtotal = ((product.price - discount) * quantity)
                         .toStringAsFixed(2);
+                    final isRentado = product.isRentable == true;
+
                     return Text(
-                      '${entry.key.name} x${entry.value} - \$${subtotal} (${discount > 0 ? "Descuento \$${discount.toStringAsFixed(2)} c/u" : "Sin descuento"})',
+                      '${product.name} x$quantity - \$${subtotal} '
+                      '(${discount > 0 ? "Descuento \$${discount.toStringAsFixed(2)} c/u" : "Sin descuento"}'
+                      '${isRentado ? " 🛠 RENTADO" : ""})',
                     );
                   }),
+
                   Divider(),
                   Text(
                     '💸 Descuento total aplicado: \$${totalDiscount.toStringAsFixed(2)}',

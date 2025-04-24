@@ -19,24 +19,32 @@ class _CreateSupplierScreenState extends State<CreateSupplierScreen> {
   final TextEditingController emailController = TextEditingController();
 
   void _saveSupplier() async {
-    if (_formKey.currentState!.validate()) {
-      final supplier = Supplier(
-        name: nameController.text.trim(),
-        phone: phoneController.text.trim(),
-        description: descriptionController.text.trim(),
-        address: addressController.text.trim(),
-        email: emailController.text.trim(),
-      );
+  if (_formKey.currentState!.validate()) {
+    final supplier = Supplier(
+      name: nameController.text.trim(),
+      phone: phoneController.text.trim(),
+      description: descriptionController.text.trim(),
+      address: addressController.text.trim(),
+      email: emailController.text.trim(),
+    );
 
+    try {
       await DBHelper.insertSupplier(supplier);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Proveedor guardado exitosamente')),
+        const SnackBar(content: Text('Proveedor guardado exitosamente')),
       );
 
-      Navigator.pop(context); // Volver a la lista
+      Navigator.pop(context);
+    } catch (e) {
+      // 🔴 Aquí se muestra cualquier error que ocurra al guardar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al guardar proveedor: $e')),
+      );
     }
   }
+}
+
 
   @override
   Widget build(BuildContext context) {

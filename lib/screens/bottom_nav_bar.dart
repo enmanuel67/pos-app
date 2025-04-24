@@ -44,10 +44,15 @@ class _BottomNavBarState extends State<BottomNavBar> with RouteAware {
 
     if (!mounted) return;
 
-    setState(() {
-      lowStockProducts = result.where((p) => p.quantity <= 5).toList();
-      overdueInvoiceCount = overdue.length;
-    });
+    final filteredLowStock = result
+    .where((p) => p.quantity <= 5 && (p.isRentable != true))
+    .toList();
+
+setState(() {
+  lowStockProducts = filteredLowStock;
+  overdueInvoiceCount = overdue.length;
+});
+
   }
 
   @override
