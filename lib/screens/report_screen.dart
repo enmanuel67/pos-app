@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../db/db_helper.dart';
 import '../models/sale.dart';
 import '../models/supplier.dart';
+import '../models/client.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -90,215 +91,258 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Future<void> _generateRentablesReport() async {
-  final data = await DBHelper.getRentableProductReport(_startDate!, _endDate!);
+    final data = await DBHelper.getRentableProductReport(
+      _startDate!,
+      _endDate!,
+    );
 
-  int totalArticulos = 0;
-  double totalDescuento = 0;
-  double totalIngreso = 0;
+    int totalArticulos = 0;
+    double totalDescuento = 0;
+    double totalIngreso = 0;
 
-  for (var row in data) {
-    totalArticulos += row['times_sold'] as int;
-    totalDescuento += row['total_discount'] as double;
-    totalIngreso += row['total_income'] as double;
-  }
-
-  showDialog(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: const Text('Reporte de Productos Rentables'),
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} a ${DateFormat('yyyy-MM-dd').format(_endDate!)}'),
-            const Divider(),
-            ...data.map((row) => ListTile(
-              title: Text(row['product_name']),
-              subtitle: Text(
-                'Veces alquilado: ${row['times_sold']}  |  Descuento total: \$${(row['total_discount'] as double).toStringAsFixed(2)}',
-              ),
-              trailing: Text('\$${(row['total_income'] as double).toStringAsFixed(2)}'),
-            )),
-            const Divider(),
-            Text('🔁 Total de artículos alquilados: $totalArticulos'),
-            Text('💸 Total de descuentos: \$${totalDescuento.toStringAsFixed(2)}'),
-            Text('💰 Total de ingresos: \$${totalIngreso.toStringAsFixed(2)}'),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cerrar'),
-        ),
-      ],
-    ),
-  );
-}
-
-
-  Future<void> _generateFacturasClienteReport() async {
-    final phoneController = TextEditingController();
+    for (var row in data) {
+      totalArticulos += row['times_sold'] as int;
+      totalDescuento += row['total_discount'] as double;
+      totalIngreso += row['total_income'] as double;
+    }
 
     showDialog(
       context: context,
       builder:
           (_) => AlertDialog(
-            title: const Text('Buscar Cliente'),
-            content: TextField(
-              controller: phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Número de Teléfono del Cliente',
+            title: const Text('Reporte de Productos Rentables'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} a ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
+                  ),
+                  const Divider(),
+                  ...data.map(
+                    (row) => ListTile(
+                      title: Text(row['product_name']),
+                      subtitle: Text(
+                        'Veces alquilado: ${row['times_sold']}  |  Descuento total: \$${(row['total_discount'] as double).toStringAsFixed(2)}',
+                      ),
+                      trailing: Text(
+                        '\$${(row['total_income'] as double).toStringAsFixed(2)}',
+                      ),
+                    ),
+                  ),
+                  const Divider(),
+                  Text('🔁 Total de artículos alquilados: $totalArticulos'),
+                  Text(
+                    '💸 Total de descuentos: \$${totalDescuento.toStringAsFixed(2)}',
+                  ),
+                  Text(
+                    '💰 Total de ingresos: \$${totalIngreso.toStringAsFixed(2)}',
+                  ),
+                ],
               ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancelar'),
+                child: const Text('Cerrar'),
               ),
-              ElevatedButton(
-                onPressed: () async {
-                  final phone = phoneController.text.trim();
-                  Navigator.pop(context);
+            ],
+          ),
+    );
+  }
 
-                  final facturas = await DBHelper.getFacturasPorCliente(
-                    phone,
-                    _startDate!,
-                    _endDate!,
-                  );
-                  final cliente = await DBHelper.getClientByPhone(phone);
+  Future<void> _generateFacturasClienteReport() async {
+    final clients = await DBHelper.getClients();
+    Client? selectedClient;
+    final searchController = TextEditingController();
 
-                  final nombreCliente =
-                      cliente != null
-                          ? '${cliente.name} ${cliente.lastName}'
-                          : 'Cliente desconocido';
+    await showDialog(
+      context: context,
+      builder: (_) {
+        List<Client> filteredClients = List.from(clients);
 
-                  if (facturas.isEmpty) {
-                    showDialog(
-                      context: context,
-                      builder:
-                          (_) => AlertDialog(
-                            title: const Text('Sin resultados'),
-                            content: const Text(
-                              'No se encontraron facturas para este cliente en el rango seleccionado.',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Cerrar'),
-                              ),
-                            ],
-                          ),
-                    );
-                    return;
-                  }
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Seleccionar Cliente'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: searchController,
+                    decoration: const InputDecoration(
+                      labelText: 'Buscar por nombre',
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        filteredClients =
+                            clients
+                                .where(
+                                  (c) =>
+                                      c.name.toLowerCase().contains(
+                                        value.toLowerCase(),
+                                      ) ||
+                                      c.lastName.toLowerCase().contains(
+                                        value.toLowerCase(),
+                                      ),
+                                )
+                                .toList();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 200,
+                    width: double.maxFinite,
+                    child: ListView.builder(
+                      itemCount: filteredClients.length,
+                      itemBuilder: (context, index) {
+                        final client = filteredClients[index];
+                        return ListTile(
+                          title: Text('${client.name} ${client.lastName}'),
+                          subtitle: Text(client.phone),
+                          onTap: () {
+                            selectedClient = client;
+                            Navigator.pop(context);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
 
-                  int countCredito = 0;
-                  int countContado = 0;
-                  double totalCredito = 0;
-                  double totalContado = 0;
-                  double totalPagado = 0;
-                  double totalDeuda = 0;
+    if (selectedClient == null) return;
 
-                  for (var f in facturas) {
+    final phone = selectedClient!.phone;
+    final facturas = await DBHelper.getFacturasPorCliente(
+      phone,
+      _startDate!,
+      _endDate!,
+    );
+    final cliente = selectedClient;
+
+    final nombreCliente =
+        '${cliente?.name ?? "Desconocido"} ${cliente?.lastName ?? ""}';
+
+    if (facturas.isEmpty) {
+      showDialog(
+        context: context,
+        builder:
+            (_) => AlertDialog(
+              title: const Text('Sin resultados'),
+              content: const Text(
+                'No se encontraron facturas para este cliente en el rango seleccionado.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            ),
+      );
+      return;
+    }
+
+    int countCredito = 0;
+    int countContado = 0;
+    double totalCredito = 0;
+    double totalContado = 0;
+    double totalPagado = 0;
+    double totalDeuda = 0;
+
+    for (var f in facturas) {
+      final total = f['total'] as double;
+      final deuda = f['amountDue'] as double;
+      final pagado = total - deuda;
+      final esCredito = f['isCredit'] == 1;
+
+      if (esCredito) {
+        countCredito++;
+        totalCredito += total;
+        totalPagado += pagado;
+        totalDeuda += deuda;
+      } else {
+        countContado++;
+        totalContado += total;
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder:
+          (_) => AlertDialog(
+            title: const Text('Facturación por Cliente'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Cliente: $nombreCliente'),
+                  Text('Teléfono: ${cliente?.phone ?? "Sin teléfono"}'),
+                  Text(
+                    'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} a ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
+                  ),
+                  const Divider(),
+                  ...facturas.map((f) {
                     final total = f['total'] as double;
                     final deuda = f['amountDue'] as double;
                     final pagado = total - deuda;
-                    final esCredito = f['isCredit'] == 1;
+                    final isCredito = f['isCredit'] == 1;
+                    final estado =
+                        isCredito
+                            ? (deuda == 0 ? 'PAGADA ✅' : 'PENDIENTE ❗')
+                            : '';
 
-                    if (esCredito) {
-                      countCredito++;
-                      totalCredito += total;
-                      totalPagado += pagado;
-                      totalDeuda += deuda;
-                    } else {
-                      countContado++;
-                      totalContado += total;
-                    }
-                  }
-
-                  showDialog(
-                    context: context,
-                    builder:
-                        (_) => AlertDialog(
-                          title: const Text('Facturación por Cliente'),
-                          content: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Cliente: $nombreCliente ($phone)'),
-                                Text(
-                                  'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} a ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
-                                ),
-                                const Divider(),
-                                ...facturas.map((f) {
-                                  final total = f['total'] as double;
-                                  final deuda = f['amountDue'] as double;
-                                  final pagado = total - deuda;
-                                  final isCredito = f['isCredit'] == 1;
-                                  final estado =
-                                      isCredito
-                                          ? (deuda == 0
-                                              ? 'PAGADA ✅'
-                                              : 'PENDIENTE ❗')
-                                          : '';
-
-                                  return ListTile(
-                                    title: Text('Factura #${f['id']}'),
-                                    subtitle: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Fecha: ${DateFormat('yyyy-MM-dd').format(DateTime.parse(f['date']))}',
-                                        ),
-                                        Text(
-                                          'Tipo: ${isCredito ? 'Crédito ($estado)' : 'Contado'}',
-                                        ),
-                                        if (isCredito)
-                                          Text(
-                                            'Pagado: \$${pagado.toStringAsFixed(2)}',
-                                          ),
-                                      ],
-                                    ),
-                                    trailing: Text(
-                                      '\$${total.toStringAsFixed(2)}',
-                                    ),
-                                  );
-                                }),
-                                const Divider(),
-                                Text(
-                                  'Cantidad de Facturas a Crédito: $countCredito',
-                                ),
-                                Text(
-                                  'Cantidad de Facturas al Contado: $countContado',
-                                ),
-                                Text(
-                                  'Total Facturado a Crédito: \$${totalCredito.toStringAsFixed(2)}',
-                                ),
-                                Text(
-                                  'Total Facturado al Contado: \$${totalContado.toStringAsFixed(2)}',
-                                ),
-                                Text(
-                                  'Total Pagado (Crédito): \$${totalPagado.toStringAsFixed(2)}',
-                                ),
-                                Text(
-                                  'Total Adeudado: \$${totalDeuda.toStringAsFixed(2)}',
-                                ),
-                              ],
-                            ),
+                    return ListTile(
+                      title: Text('Factura #${f['id']}'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Fecha: ${DateFormat('yyyy-MM-dd').format(DateTime.parse(f['date']))}',
                           ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cerrar'),
-                            ),
-                          ],
-                        ),
-                  );
-                },
-                child: const Text('Buscar'),
+                          Text(
+                            'Tipo: ${isCredito ? 'Crédito ($estado)' : 'Contado'}',
+                          ),
+                          if (isCredito)
+                            Text('Pagado: \$${pagado.toStringAsFixed(2)}'),
+                        ],
+                      ),
+                      trailing: Text('\$${total.toStringAsFixed(2)}'),
+                    );
+                  }),
+                  const Divider(),
+                  Text('Cantidad de Facturas a Crédito: $countCredito'),
+                  Text('Cantidad de Facturas al Contado: $countContado'),
+                  Text(
+                    'Total Facturado a Crédito: \$${totalCredito.toStringAsFixed(2)}',
+                  ),
+                  Text(
+                    'Total Facturado al Contado: \$${totalContado.toStringAsFixed(2)}',
+                  ),
+                  Text(
+                    'Total Pagado (Crédito): \$${totalPagado.toStringAsFixed(2)}',
+                  ),
+                  Text('Total Adeudado: \$${totalDeuda.toStringAsFixed(2)}'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cerrar'),
               ),
             ],
           ),

@@ -4,11 +4,14 @@ import '../models/sale.dart';
 import '../models/sale_item.dart';
 import '../models/client.dart';
 import '../db/db_helper.dart';
+import 'package:intl/intl.dart';
+
 
 class SaleSummaryScreen extends StatefulWidget {
   final Map<Product, int> selectedProducts;
   final String? clientPhone;
   final bool isCredit;
+  
 
   const SaleSummaryScreen({
     Key? key,
@@ -26,6 +29,8 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
   Map<int, double> _discounts = {};
   double _total = 0.0;
   Client? _client;
+  int? _generatedSaleId;
+
 
   @override
   void initState() {
@@ -120,7 +125,7 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
       );
       return;
     }
-
+    
     if (widget.isCredit && widget.clientPhone != null) {
       final liveClient = await DBHelper.getClientByPhone(widget.clientPhone!);
 
@@ -152,6 +157,7 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
       isCredit: widget.isCredit,
     );
     final saleId = await DBHelper.insertSale(sale);
+    
 
     final items =
         _products.entries.map((entry) {
@@ -192,6 +198,12 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
       return sum + (discount * entry.value);
     });
 
+
+setState(() {
+  _generatedSaleId = saleId; // ⬅️ Guardamos para usar en la factura
+});
+
+
     showDialog(
       context: context,
       builder:
@@ -203,13 +215,35 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_client != null) ...[
-                    Text('Cliente: ${_client!.name} ${_client!.lastName}'),
-                    Text('Teléfono: ${_client!.phone}'),
-                    SizedBox(height: 10),
-                  ],
-                  Text('Fecha: ${DateTime.now()}'),
-                  Divider(),
+                  Center(
+                    child: Column(
+                      children: const [
+                        Text(
+                          '🛍️ DECOYAMIX',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text('📍 calle Atilio Pérez, Cutupú, La Vega'),
+                        Text('(frente al parque)'),
+                        Text('📞 829-940-5937'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '📅 ${DateFormat('yyyy-MM-dd    HH:mm').format(DateTime.now())}',
+                  ),
+                  Text('Factura: #${(_generatedSaleId?.toString().padLeft(5, '0')) ?? "-----"}'),
+                  const Divider(),
+
+                  Text(
+                    '👤 Cliente: ${_client != null ? '${_client!.name} ${_client!.lastName}' : 'Desconocido'}',
+                  ),
+                  Text('📱 Tel: ${_client?.phone ?? 'Sin teléfono'}'),
+                  const Divider(),
+
+                  const Text('Producto             Cant.   Subtotal'),
+                  const Divider(),
+
                   ..._products.entries.map((entry) {
                     final product = entry.key;
                     final quantity = entry.value;
@@ -217,26 +251,35 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
                     final subtotal = ((product.price - discount) * quantity)
                         .toStringAsFixed(2);
                     final isRentado = product.isRentable == true;
+                    final nombre =
+                        (product.name.length > 18)
+                            ? '${product.name.substring(0, 18)}…'
+                            : product.name;
 
                     return Text(
-                      '${product.name} x$quantity - \$${subtotal} '
-                      '(${discount > 0 ? "Descuento \$${discount.toStringAsFixed(2)} c/u" : "Sin descuento"}'
-                      '${isRentado ? " 🛠 RENTADO" : ""})',
+                      '$nombre x$quantity  \$${subtotal} '
+                      '${discount > 0 ? '(Desc. \$${discount.toStringAsFixed(2)} c/u)' : ''}'
+                      '${isRentado ? ' 🛠' : ''}',
                     );
                   }),
 
-                  Divider(),
+                  const Divider(),
                   Text(
-                    '💸 Descuento total aplicado: \$${totalDiscount.toStringAsFixed(2)}',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    '💸 Descuento total: \$${totalDiscount.toStringAsFixed(2)}',
                   ),
+                  Text('💰 Total a pagar: \$${_total.toStringAsFixed(2)}'),
                   Text(
-                    'Total: \$${_total.toStringAsFixed(2)}',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    widget.isCredit
+                        ? '💳 Tipo de pago: Crédito'
+                        : '💵 Tipo de pago: Contado',
                   ),
+
+                  const Divider(),
+                  const Center(child: Text('Gracias por preferirnos')),
                 ],
               ),
             ),
+
             actions: [
               TextButton(
                 onPressed: () {

@@ -4,6 +4,8 @@ import '../models/product.dart';
 import '../models/sale_item.dart';
 import '../models/client.dart';
 import '../db/db_helper.dart';
+import 'package:intl/intl.dart';
+
 
 class SaleDetailScreen extends StatefulWidget {
   final Sale sale;
@@ -58,44 +60,79 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
             title: Text(
               'Factura ${widget.sale.isCredit ? "(Crédito)" : "(Contado)"}',
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_client != null) ...[
-                  Text('Cliente: ${_client!.name} ${_client!.lastName}'),
-                  Text('Teléfono: ${_client!.phone}'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Column(
+                      children: const [
+                        Text(
+                          '*** REIMPRESIÓN ***',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          '🛍️ DECOYAMIX',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text('📍 calle Atilio Pérez, Cutupú, La Vega'),
+                        Text('(frente al parque)'),
+                        Text('📞 829-940-5937'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text('📅 ${DateFormat('yyyy-MM-dd       HH:mm').format(DateTime.parse(widget.sale.date))}'),
+                  Text('Factura: #${widget.sale.id.toString().padLeft(5, '0')}'),
+                  const Divider(),
+                  Text(
+                    '👤 Cliente: ${_client != null ? "${_client!.name} ${_client!.lastName}" : "Desconocido"}',
+                  ),
+                  Text('📱 Tel: ${_client?.phone ?? "Sin teléfono"}'),
+                  const Divider(),
+                  const Text('Producto             Cant.   Subtotal'),
+                  const Divider(),
+                  ..._items.map((item) {
+                    final product = _productMap[item.productId];
+                    final nombre =
+                        (product?.name.length ?? 0) > 18
+                            ? '${product!.name.substring(0, 18)}…'
+                            : product?.name ?? 'Producto';
+                    final subtotal = item.subtotal.toStringAsFixed(2);
+                    final desc =
+                        item.discount > 0
+                            ? ' (Desc. \$${item.discount.toStringAsFixed(2)})'
+                            : '';
+                    final rentable =
+                        (product?.isRentable ?? false) ? ' 🛠' : '';
+                    return Text(
+                      '$nombre x${item.quantity}  \$${subtotal}$desc$rentable',
+                    );
+                  }),
+                  const Divider(),
+                  if (totalDiscount > 0)
+                    Text(
+                      '💸 Descuento total: \$${totalDiscount.toStringAsFixed(2)}',
+                    ),
+                  Text('💰 Total: \$${widget.sale.total.toStringAsFixed(2)}'),
+                  Text(
+                    widget.sale.isCredit
+                        ? '💳 Tipo: Crédito'
+                        : '💵 Tipo: Contado',
+                  ),
+                  if (widget.sale.isCredit) ...[
+                    
+                  ],
+                  const Divider(),
+                  const Center(child: Text('Gracias por preferirnos')),
                 ],
-                SizedBox(height: 8),
-                Text('Fecha: ${widget.sale.date}'),
-                if (widget.sale.isPaid)
-                  Text(
-                    '✅ Factura pagada',
-                    style: TextStyle(color: Colors.green),
-                  ),
-                Divider(),
-                ..._items.map((item) {
-                  final product = _productMap[item.productId];
-                  final discountText =
-                      item.discount > 0
-                          ? ' (Descuento \$${item.discount.toStringAsFixed(2)} c/u)'
-                          : '';
-                  return Text(
-                    '${product?.name ?? "Producto"} x${item.quantity} - \$${item.subtotal.toStringAsFixed(2)}$discountText',
-                  );
-                }),
-                Divider(),
-                if (totalDiscount > 0)
-                  Text(
-                    '💸 Descuento total aplicado: \$${totalDiscount.toStringAsFixed(2)}',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                Text(
-                  'Total: \$${widget.sale.total.toStringAsFixed(2)}',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
+              ),
             ),
+
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -125,8 +162,20 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
             Text(
               'Tipo de venta: ${widget.sale.isCredit ? "Crédito" : "Contado"}',
             ),
-            if (widget.sale.isPaid)
-              Text('✅ Factura pagada', style: TextStyle(color: Colors.green)),
+            if (widget.sale.isCredit) ...[
+              Text(
+                widget.sale.amountDue == 0
+                    ? '✅ Factura pagada'
+                    : '❗ Pendiente de pago',
+                style: TextStyle(
+                  color: widget.sale.amountDue == 0 ? Colors.green : Colors.red,
+                ),
+              ),
+              Text(
+                '💰 Pagado: \$${(widget.sale.total - widget.sale.amountDue).toStringAsFixed(2)}',
+              ),
+              Text('💳 Deuda: \$${widget.sale.amountDue.toStringAsFixed(2)}'),
+            ],
             const SizedBox(height: 16),
             const Text(
               'Productos:',
