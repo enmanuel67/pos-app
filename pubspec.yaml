@@ -35,6 +35,7 @@ dependencies:
   intl: ^0.18.1
   pdf: ^3.10.4
   printing: ^5.12.0
+  barcode_widget: ^2.0.1
 
 
 

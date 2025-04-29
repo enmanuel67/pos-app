@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../db/db_helper.dart';
 import '../models/product.dart';
 import 'create_product_screen.dart';
+import 'package:barcode_widget/barcode_widget.dart';
 
 class InventoryScreen extends StatefulWidget {
   final String? initialBarcode;
@@ -17,6 +18,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _costController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
+  final nameController = TextEditingController();
+  final barcodeController = TextEditingController();
+  final descriptionController = TextEditingController();
+  final priceController = TextEditingController();
+  final costController = TextEditingController();
 
   Product? _selectedProduct;
   String? _notFoundBarcode;
@@ -41,9 +47,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
         _selectedProduct = null;
         _notFoundBarcode = barcode;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este producto no existe')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Este producto no existe')));
     } else {
       setState(() {
         _selectedProduct = product;
@@ -98,14 +104,128 @@ class _InventoryScreenState extends State<InventoryScreen> {
       }
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Inventario actualizado')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Inventario actualizado')));
 
     setState(() {
       _inventoryList.clear();
     });
   }
+
+  Future<void> _printSticker() async {
+  if (_selectedProduct == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Primero selecciona un producto.')),
+    );
+    return;
+  }
+
+  int quantity = 1;
+  final controller = TextEditingController(text: '1');
+
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('¿Cuántos stickers deseas imprimir?'),
+      content: TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'Cantidad'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Confirmar'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm != true) return;
+
+  quantity = int.tryParse(controller.text) ?? 1;
+
+  if (quantity > 50) {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('¿Seguro?'),
+        content: Text('Estás intentando imprimir $quantity stickers. ¿Continuar?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sí'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true) return;
+  }
+
+  final truncatedName = (_selectedProduct!.name.length > 20)
+      ? '${_selectedProduct!.name.substring(0, 20)}…'
+      : _selectedProduct!.name;
+
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Vista previa del Sticker'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border.all(),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              children: [
+                BarcodeWidget(
+                  barcode: Barcode.code128(),
+                  data: _selectedProduct!.barcode.isEmpty ? '0' : _selectedProduct!.barcode,
+                  width: 150,
+                  height: 50,
+                  drawText: false,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  truncatedName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  '\$${_selectedProduct!.price.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cerrar'),
+        ),
+      ],
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -143,23 +263,46 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
                       TextField(
                         controller: _costController,
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Costo unitario'),
+                        keyboardType: TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Costo unitario',
+                        ),
                       ),
                       TextField(
                         controller: _priceController,
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Precio de venta'),
+                        keyboardType: TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Precio de venta',
+                        ),
                       ),
                       TextField(
                         controller: _quantityController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Cantidad a agregar'),
+                        decoration: const InputDecoration(
+                          labelText: 'Cantidad a agregar',
+                        ),
                       ),
                       const SizedBox(height: 10),
-                      ElevatedButton(
-                        onPressed: _addToInventoryList,
-                        child: const Text('Agregar a la lista'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _addToInventoryList,
+                              child: const Text('Agregar a la lista'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _printSticker,
+                              child: const Text('Imprimir Sticker'),
+                            ),
+                          ),
+                        ],
                       ),
                       const Divider(),
                     ],
@@ -174,7 +317,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             final created = await Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => CreateProductScreen(initialBarcode: _notFoundBarcode!),
+                                builder:
+                                    (_) => CreateProductScreen(
+                                      initialBarcode: _notFoundBarcode!,
+                                    ),
                               ),
                             );
 
@@ -188,32 +334,35 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       const Divider(),
                     ],
 
-                    const Text('Productos por agregar:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      'Productos por agregar:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 8),
                     SizedBox(
-  height: 300, // Puedes ajustar esta altura si lo necesitas
-  child: ListView.builder(
-    shrinkWrap: true,
-    physics: const NeverScrollableScrollPhysics(),
-    itemCount: _inventoryList.length,
-    itemBuilder: (_, index) {
-      final item = _inventoryList[index];
-      final product = item['product'] as Product;
-      final quantity = item['quantity'];
-      final cost = item['cost'];
-      final price = item['price'];
-      final total = (cost * quantity).toStringAsFixed(2);
+                      height: 300, // Puedes ajustar esta altura si lo necesitas
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _inventoryList.length,
+                        itemBuilder: (_, index) {
+                          final item = _inventoryList[index];
+                          final product = item['product'] as Product;
+                          final quantity = item['quantity'];
+                          final cost = item['cost'];
+                          final price = item['price'];
+                          final total = (cost * quantity).toStringAsFixed(2);
 
-      return ListTile(
-        title: Text(product.name),
-        subtitle: Text(
-          'Cantidad: $quantity | Costo: \$${cost.toStringAsFixed(2)} | Precio: \$${price.toStringAsFixed(2)}',
-        ),
-        trailing: Text('Total: \$${total}'),
-      );
-    },
-  ),
-),
+                          return ListTile(
+                            title: Text(product.name),
+                            subtitle: Text(
+                              'Cantidad: $quantity | Costo: \$${cost.toStringAsFixed(2)} | Precio: \$${price.toStringAsFixed(2)}',
+                            ),
+                            trailing: Text('Total: \$${total}'),
+                          );
+                        },
+                      ),
+                    ),
 
                     const SizedBox(height: 10),
                     if (_inventoryList.isNotEmpty)

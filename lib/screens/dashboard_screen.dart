@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pos_app/screens/expenses_screen.dart';
+import 'package:pos_app/screens/help_screen.dart';
 import 'package:pos_app/screens/inventory_screen.dart';
 import 'package:pos_app/screens/billing_screen.dart';
 import 'package:pos_app/screens/clients_screen.dart';
@@ -38,6 +39,10 @@ class DashboardScreen extends StatelessWidget {
       _DashboardItem('Gastos', Icons.currency_exchange, () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => ExpensesScreen()));
       }),
+      _DashboardItem('Ayuda', Icons.question_mark_rounded, () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => HelpScreen()));
+      }),
+      
     ];
 
     return Scaffold(
