@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pos_app/screens/edit_product_screen.dart';
 import '../db/db_helper.dart';
-import '../models/product.dart';
+import 'package:pos_app/models/product.dart';
 import 'create_product_screen.dart';
 
 class ProductsScreen extends StatefulWidget {

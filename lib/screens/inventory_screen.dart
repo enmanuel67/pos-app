@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../db/db_helper.dart';
-import '../models/product.dart';
+import 'package:pos_app/models/product.dart';
 import 'create_product_screen.dart';
 import 'package:barcode_widget/barcode_widget.dart';
+import '../helpers/printer_helper.dart';
 
 class InventoryScreen extends StatefulWidget {
   final String? initialBarcode;
@@ -23,6 +24,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   final descriptionController = TextEditingController();
   final priceController = TextEditingController();
   final costController = TextEditingController();
+  final GlobalKey previewKey = GlobalKey();
+  
 
   Product? _selectedProduct;
   String? _notFoundBarcode;
@@ -113,119 +116,149 @@ class _InventoryScreenState extends State<InventoryScreen> {
     });
   }
 
+  
+
   Future<void> _printSticker() async {
-  if (_selectedProduct == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Primero selecciona un producto.')),
-    );
-    return;
-  }
+    if (_selectedProduct == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Primero selecciona un producto.')),
+      );
+      return;
+    }
 
-  int quantity = 1;
-  final controller = TextEditingController(text: '1');
 
-  final confirm = await showDialog<bool>(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: const Text('¿Cuántos stickers deseas imprimir?'),
-      content: TextField(
-        controller: controller,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(labelText: 'Cantidad'),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancelar'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Confirmar'),
-        ),
-      ],
-    ),
-  );
+    int quantity = 1;
+    final controller = TextEditingController(text: '1');
 
-  if (confirm != true) return;
-
-  quantity = int.tryParse(controller.text) ?? 1;
-
-  if (quantity > 50) {
-    final sure = await showDialog<bool>(
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('¿Seguro?'),
-        content: Text('Estás intentando imprimir $quantity stickers. ¿Continuar?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('No'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Sí'),
-          ),
-        ],
-      ),
-    );
-    if (sure != true) return;
-  }
-
-  final truncatedName = (_selectedProduct!.name.length > 20)
-      ? '${_selectedProduct!.name.substring(0, 20)}…'
-      : _selectedProduct!.name;
-
-  showDialog(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: const Text('Vista previa del Sticker'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              border: Border.all(),
-              borderRadius: BorderRadius.circular(8),
+      builder:
+          (_) => AlertDialog(
+            title: const Text('¿Cuántos stickers deseas imprimir?'),
+            content: TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Cantidad'),
             ),
-            child: Column(
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Confirmar'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirm != true) return;
+
+    quantity = int.tryParse(controller.text) ?? 1;
+
+    if (quantity > 50) {
+      final sure = await showDialog<bool>(
+        context: context,
+        builder:
+            (_) => AlertDialog(
+              title: const Text('¿Seguro?'),
+              content: Text(
+                'Estás intentando imprimir $quantity stickers. ¿Continuar?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('No'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Sí'),
+                ),
+              ],
+            ),
+      );
+      if (sure != true) return;
+    }
+
+    final truncatedName =
+        (_selectedProduct!.name.length > 20)
+            ? '${_selectedProduct!.name.substring(0, 20)}…'
+            : _selectedProduct!.name;
+
+    showDialog(
+      context: context,
+      builder:
+          (_) => AlertDialog(
+            title: const Text('Vista previa del Sticker'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                BarcodeWidget(
-                  barcode: Barcode.code128(),
-                  data: _selectedProduct!.barcode.isEmpty ? '0' : _selectedProduct!.barcode,
-                  width: 150,
-                  height: 50,
-                  drawText: false,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  truncatedName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                Text(
-                  '\$${_selectedProduct!.price.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                RepaintBoundary(
+                  key: previewKey,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(),
+                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.white, // Asegura fondo blanco
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        BarcodeWidget(
+                          barcode: Barcode.code128(),
+                          data:
+                              _selectedProduct!.barcode.isEmpty
+                                  ? '0'
+                                  : _selectedProduct!.barcode,
+                          width: 125,
+                          height: 35,
+                          drawText: false,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          truncatedName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          '\$${_selectedProduct!.price.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
+                        const SizedBox(height: 20), // 👈 Esto fuerza más papel abajo
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cerrar'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  // 👈 necesita ser async
+                  await PrinterHelper.printSticker(
+                    name: _selectedProduct!.name,
+                    price: _selectedProduct!.price,
+                    barcodeData: _selectedProduct!.barcode,
+                    previewKey: previewKey, // 👈 ahora pasa la key también
+                  );
+                },
+                child: const Text('Imprimir Sticker'),
+              ),
+            ],
           ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cerrar'),
-        ),
-      ],
-    ),
-  );
-}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

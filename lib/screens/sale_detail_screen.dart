@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/sale.dart';
-import '../models/product.dart';
+import 'package:pos_app/models/product.dart';
 import '../models/sale_item.dart';
 import '../models/client.dart';
 import '../db/db_helper.dart';

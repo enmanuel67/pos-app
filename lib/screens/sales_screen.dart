@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/product.dart';
+import 'package:pos_app/models/product.dart';
 import '../db/db_helper.dart';
 import 'sale_summary_screen.dart';
 

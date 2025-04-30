@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../models/product.dart';
+import 'package:pos_app/models/product.dart';
 import '../models/supplier.dart';
 import '../models/client.dart';
 import '../models/sale.dart';
