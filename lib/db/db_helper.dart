@@ -8,6 +8,7 @@ import '../models/sale_item.dart';
 import '../models/expense.dart';
 import '../models/expense_entry.dart';
 import '../notifiers/inventory_notifier.dart';
+import 'dart:convert';
 
 class DBHelper {
   static Database? _db;
@@ -124,6 +125,17 @@ class DBHelper {
     FOREIGN KEY (expense_id) REFERENCES expenses(id)
   )
 ''');
+        await db.execute('''
+    CREATE TABLE payment_history(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_phone TEXT,
+      amount REAL,
+      payment_date TEXT,
+      receipt_number TEXT,
+      affected_sales TEXT,
+      created_at TEXT
+    )
+  ''');
       },
     );
   }
@@ -848,10 +860,14 @@ class DBHelper {
     return result;
   }
 
-  static Future<List<Map<String, dynamic>>> getRentableProductReport(DateTime start, DateTime end) async {
-  final dbClient = await db;
+  static Future<List<Map<String, dynamic>>> getRentableProductReport(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final dbClient = await db;
 
-  final result = await dbClient.rawQuery('''
+    final result = await dbClient.rawQuery(
+      '''
     SELECT 
       p.name AS product_name,
       COUNT(si.id) AS times_sold,
@@ -863,12 +879,89 @@ class DBHelper {
     WHERE p.is_rentable = 1 AND date(s.date) BETWEEN ? AND ?
     GROUP BY si.product_id
     ORDER BY total_income DESC
-  ''', [
-    start.toIso8601String().split('T').first,
-    end.toIso8601String().split('T').first,
-  ]);
+  ''',
+      [
+        start.toIso8601String().split('T').first,
+        end.toIso8601String().split('T').first,
+      ],
+    );
+
+    return result;
+  }
+
+  // Corregir el método savePaymentHistory
+static Future<int> savePaymentHistory(
+  String clientPhone,
+  double amount,
+  String receiptNumber,
+  Map<int, double> affectedSales,
+) async {
+  final dbClient = await db;
+
+  // Convertir el mapa de ventas afectadas a formato JSON para almacenamiento
+  final affectedSalesJson = jsonEncode(
+    affectedSales.map((key, value) => MapEntry(key.toString(), value)),
+  );
+
+  return await dbClient.insert('payment_history', {
+    'client_phone': clientPhone,
+    'amount': amount,
+    'payment_date': DateTime.now().toIso8601String(),
+    'receipt_number': receiptNumber,
+    'affected_sales': affectedSalesJson,
+    'created_at': DateTime.now().toIso8601String(),
+  });
+}
+
+// Corregir el método getPaymentHistoryByClient
+static Future<List<Map<String, dynamic>>> getPaymentHistoryByClient(
+  String phone,
+) async {
+  final dbClient = await db;
+
+  final result = await dbClient.query(
+    'payment_history',
+    where: 'client_phone = ?',
+    whereArgs: [phone],
+    orderBy: 'payment_date DESC',
+  );
 
   return result;
 }
 
+// Corregir el método getPaymentById
+static Future<Map<String, dynamic>?> getPaymentById(int id) async {
+  final dbClient = await db;
+
+  final result = await dbClient.query(
+    'payment_history',
+    where: 'id = ?',
+    whereArgs: [id],
+    limit: 1,
+  );
+
+  if (result.isEmpty) return null;
+  return result.first;
+}
+
+// Corregir el método getPaymentHistoryByDateRange
+static Future<List<Map<String, dynamic>>> getPaymentHistoryByDateRange(
+  String phone,
+  DateTime startDate,
+  DateTime endDate,
+) async {
+  final dbClient = await db;
+
+  final start = startDate.toIso8601String();
+  final end = endDate.add(Duration(days: 1)).toIso8601String();
+
+  final result = await dbClient.query(
+    'payment_history',
+    where: 'client_phone = ? AND payment_date BETWEEN ? AND ?',
+    whereArgs: [phone, start, end],
+    orderBy: 'payment_date DESC',
+  );
+
+  return result;
+}
 }

@@ -4,6 +4,7 @@ import '../db/db_helper.dart';
 import '../models/sale.dart';
 import '../models/supplier.dart';
 import '../models/client.dart';
+import '../helpers/printer_helper.dart'; // Asegúrate de tener este import
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -25,6 +26,11 @@ class _ReportScreenState extends State<ReportScreen> {
   double profitTotal = 0;
   double creditPaymentsTotal = 0;
   double totalDiscounts = 0;
+  
+  // Variables para almacenar los datos del último reporte generado
+  Map<String, dynamic> _lastReportData = {};
+  String _lastReportTitle = '';
+  String _lastReportType = '';
 
   @override
   void initState() {
@@ -58,7 +64,17 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Future<void> _generateReport() async {
-    if (_startDate == null || _endDate == null) return;
+    if (_startDate == null || _endDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Por favor, selecciona un rango de fechas')),
+      );
+      return;
+    }
+
+    // Limpiar datos de reporte anterior
+    _lastReportData.clear();
+    _lastReportTitle = '';
+    _lastReportType = _reportType;
 
     switch (_reportType) {
       case 'facturacion':
@@ -106,48 +122,63 @@ class _ReportScreenState extends State<ReportScreen> {
       totalIngreso += row['total_income'] as double;
     }
 
+    // Guardar datos para impresión
+    _lastReportTitle = 'Reporte de Productos Rentables';
+    _lastReportData = {
+      'data': data,
+      'totalArticulos': totalArticulos,
+      'totalDescuento': totalDescuento,
+      'totalIngreso': totalIngreso,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
+
     showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Reporte de Productos Rentables'),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} a ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
-                  ),
-                  const Divider(),
-                  ...data.map(
-                    (row) => ListTile(
-                      title: Text(row['product_name']),
-                      subtitle: Text(
-                        'Veces alquilado: ${row['times_sold']}  |  Descuento total: \$${(row['total_discount'] as double).toStringAsFixed(2)}',
-                      ),
-                      trailing: Text(
-                        '\$${(row['total_income'] as double).toStringAsFixed(2)}',
-                      ),
-                    ),
-                  ),
-                  const Divider(),
-                  Text('🔁 Total de artículos alquilados: $totalArticulos'),
-                  Text(
-                    '💸 Total de descuentos: \$${totalDescuento.toStringAsFixed(2)}',
-                  ),
-                  Text(
-                    '💰 Total de ingresos: \$${totalIngreso.toStringAsFixed(2)}',
-                  ),
-                ],
+      builder: (_) => AlertDialog(
+        title: Text(_lastReportTitle),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} a ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cerrar'),
+              const Divider(),
+              ...data.map(
+                (row) => ListTile(
+                  title: Text(row['product_name']),
+                  subtitle: Text(
+                    'Veces alquilado: ${row['times_sold']}  |  Descuento total: \$${(row['total_discount'] as double).toStringAsFixed(2)}',
+                  ),
+                  trailing: Text(
+                    '\$${(row['total_income'] as double).toStringAsFixed(2)}',
+                  ),
+                ),
+              ),
+              const Divider(),
+              Text('🔁 Total de artículos alquilados: $totalArticulos'),
+              Text(
+                '💸 Total de descuentos: \$${totalDescuento.toStringAsFixed(2)}',
+              ),
+              Text(
+                '💰 Total de ingresos: \$${totalIngreso.toStringAsFixed(2)}',
               ),
             ],
           ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+          ElevatedButton.icon(
+            icon: Icon(Icons.print),
+            label: Text('Imprimir'),
+            onPressed: () => _printLastReport(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -176,8 +207,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     onChanged: (value) {
                       setState(() {
                         filteredClients =
-                            clients
-                                .where(
+                            clients.where(
                                   (c) =>
                                       c.name.toLowerCase().contains(
                                         value.toLowerCase(),
@@ -239,8 +269,7 @@ class _ReportScreenState extends State<ReportScreen> {
     if (facturas.isEmpty) {
       showDialog(
         context: context,
-        builder:
-            (_) => AlertDialog(
+        builder: (_) => AlertDialog(
               title: const Text('Sin resultados'),
               content: const Text(
                 'No se encontraron facturas para este cliente en el rango seleccionado.',
@@ -280,11 +309,25 @@ class _ReportScreenState extends State<ReportScreen> {
       }
     }
 
+    // Guardar datos para impresión
+    _lastReportTitle = 'Facturación por Cliente';
+    _lastReportData = {
+      'cliente': cliente,
+      'nombreCliente': nombreCliente,
+      'facturas': facturas,
+      'countCredito': countCredito,
+      'countContado': countContado,
+      'totalCredito': totalCredito,
+      'totalContado': totalContado,
+      'totalPagado': totalPagado,
+      'totalDeuda': totalDeuda,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
     showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Facturación por Cliente'),
+      builder: (_) => AlertDialog(
+            title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -344,6 +387,11 @@ class _ReportScreenState extends State<ReportScreen> {
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cerrar'),
               ),
+              ElevatedButton.icon(
+                icon: Icon(Icons.print),
+                label: Text('Imprimir'),
+                onPressed: () => _printLastReport(),
+              ),
             ],
           ),
     );
@@ -356,11 +404,21 @@ class _ReportScreenState extends State<ReportScreen> {
     final double gastos = data['gastos'] as double;
     final double gananciaNeta = gananciaBruta - gastos;
 
+    // Guardar datos para impresión
+    _lastReportTitle = 'Resumen General';
+    _lastReportData = {
+      'data': data,
+      'gananciaBruta': gananciaBruta,
+      'gastos': gastos,
+      'gananciaNeta': gananciaNeta,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
+
     showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Resumen General'),
+      builder: (_) => AlertDialog(
+            title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -399,6 +457,11 @@ class _ReportScreenState extends State<ReportScreen> {
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cerrar'),
+              ),
+              ElevatedButton.icon(
+                icon: Icon(Icons.print),
+                label: Text('Imprimir'),
+                onPressed: () => _printLastReport(),
               ),
             ],
           ),
@@ -465,11 +528,23 @@ class _ReportScreenState extends State<ReportScreen> {
       totalGanancia += row['total_gain'] as double;
     }
 
+    // Guardar datos para impresión
+    _lastReportTitle = 'Productos Vendidos - $negocioSeleccionado';
+    _lastReportData = {
+      'negocio': negocioSeleccionado,
+      'data': data,
+      'totalCantidad': totalCantidad,
+      'totalDescuento': totalDescuento,
+      'totalVentas': totalVentas,
+      'totalGanancia': totalGanancia,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
+
     showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: Text('Productos Vendidos - $negocioSeleccionado'),
+      builder: (_) => AlertDialog(
+            title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -505,6 +580,11 @@ class _ReportScreenState extends State<ReportScreen> {
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cerrar'),
+              ),
+              ElevatedButton.icon(
+                icon: Icon(Icons.print),
+                label: Text('Imprimir'),
+                onPressed: () => _printLastReport(),
               ),
             ],
           ),
@@ -564,9 +644,21 @@ class _ReportScreenState extends State<ReportScreen> {
       totalDiscounts = discounts;
     });
 
+    // Guardar datos para impresión
+    _lastReportTitle = 'Reporte de Facturación';
+    _lastReportData = {
+      'sales': _filteredSales,
+      'creditTotal': creditTotal,
+      'cashTotal': cashTotal,
+      'creditPaymentsTotal': creditPaymentsTotal,
+      'profitTotal': profitTotal,
+      'totalDiscounts': totalDiscounts,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
+
     _showSalesPreview();
   }
-
   Future<void> _generateGastosReport() async {
     final gastos = await DBHelper.getExpenseHistory(_startDate!, _endDate!);
 
@@ -575,11 +667,19 @@ class _ReportScreenState extends State<ReportScreen> {
       (sum, g) => sum + (g['amount'] as double),
     );
 
+    // Guardar datos para impresión
+    _lastReportTitle = 'Historial de Gastos';
+    _lastReportData = {
+      'gastos': gastos,
+      'totalGastos': totalGastos,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
+
     showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Historial de Gastos'),
+      builder: (_) => AlertDialog(
+            title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -612,13 +712,23 @@ class _ReportScreenState extends State<ReportScreen> {
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cerrar'),
               ),
+              ElevatedButton.icon(
+                icon: Icon(Icons.print),
+                label: Text('Imprimir'),
+                onPressed: () => _printLastReport(),
+              ),
             ],
           ),
     );
   }
 
   Future<void> _generateInventarioReport() async {
-    if (_selectedSupplier == null) return;
+    if (_selectedSupplier == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Por favor, selecciona un proveedor')),
+      );
+      return;
+    }
 
     final entries = await DBHelper.getInventoryEntriesBySupplierAndDate(
       _selectedSupplier!.id!,
@@ -638,11 +748,22 @@ class _ReportScreenState extends State<ReportScreen> {
       (sum, e) => sum + ((e['cost'] as num) * (e['quantity'] as int)),
     );
 
+    // Guardar datos para impresión
+    _lastReportTitle = 'Reporte de Inventario';
+    _lastReportData = {
+      'supplier': _selectedSupplier,
+      'entries': entries,
+      'products': productMap,
+      'totalQty': totalQty,
+      'totalCost': totalCost,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
+
     showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Reporte de Inventario'),
+      builder: (_) => AlertDialog(
+            title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -680,6 +801,11 @@ class _ReportScreenState extends State<ReportScreen> {
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cerrar'),
               ),
+              ElevatedButton.icon(
+                icon: Icon(Icons.print),
+                label: Text('Imprimir'),
+                onPressed: () => _printLastReport(),
+              ),
             ],
           ),
     );
@@ -715,11 +841,19 @@ class _ReportScreenState extends State<ReportScreen> {
       });
     }
 
+    // Guardar datos para impresión
+    _lastReportTitle = 'Pagos a Crédito Recibidos';
+    _lastReportData = {
+      'detalles': detalles,
+      'totalPagado': totalPagado,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
+
     showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Pagos a Crédito Recibidos'),
+      builder: (_) => AlertDialog(
+            title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -747,6 +881,11 @@ class _ReportScreenState extends State<ReportScreen> {
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cerrar'),
               ),
+              ElevatedButton.icon(
+                icon: Icon(Icons.print),
+                label: Text('Imprimir'),
+                onPressed: () => _printLastReport(),
+              ),
             ],
           ),
     );
@@ -759,9 +898,8 @@ class _ReportScreenState extends State<ReportScreen> {
 
     showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Reporte de Facturación'),
+      builder: (_) => AlertDialog(
+            title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -822,9 +960,517 @@ class _ReportScreenState extends State<ReportScreen> {
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cerrar'),
               ),
+              ElevatedButton.icon(
+                icon: Icon(Icons.print),
+                label: Text('Imprimir'),
+                onPressed: () => _printLastReport(),
+              ),
             ],
           ),
     );
+  }
+  
+  // Método para imprimir el último reporte generado
+  Future<void> _printLastReport() async {
+    if (_lastReportData.isEmpty || _lastReportTitle.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No hay reporte para imprimir')),
+      );
+      return;
+    }
+    
+    try {
+      // Mostrar indicador de progreso
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Text("Imprimiendo reporte..."),
+              ],
+            ),
+          );
+        },
+      );
+      
+      // Verificar conexión a la impresora
+      final connected = await PrinterHelper.connectToPrinter();
+      if (!connected) {
+        Navigator.pop(context); // Cerrar diálogo de progreso
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo conectar a la impresora')),
+        );
+        return;
+      }
+      
+      // Imprimir según el tipo de reporte
+      await _printReportByType();
+      
+      // Cerrar diálogo de progreso
+      Navigator.pop(context);
+      
+      // Mensaje de éxito
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reporte impreso correctamente')),
+      );
+    } catch (e) {
+      // Cerrar diálogo de progreso si hay error
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      print('❌ Error al imprimir reporte: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al imprimir el reporte: $e')),
+      );
+    }
+  }
+  
+  // Imprime el tipo de reporte específico
+  Future<void> _printReportByType() async {
+    switch (_lastReportType) {
+      case 'facturacion':
+        await _printFacturacionReport();
+        break;
+      case 'inventario':
+        await _printInventarioReport();
+        break;
+      case 'pagos_credito':
+        await _printPagosCreditoReport();
+        break;
+      case 'historial_gastos':
+        await _printGastosReport();
+        break;
+      case 'resumen_general':
+        await _printResumenGeneralReport();
+        break;
+      case 'facturas_cliente':
+        await _printFacturasClienteReport();
+        break;
+      case 'productos_negocio':
+        await _printProductosNegocioReport();
+        break;
+      case 'rentables':
+        await _printRentablesReport();
+        break;
+      default:
+        throw Exception('Tipo de reporte no implementado para impresión');
+    }
+  }
+  
+  // Métodos específicos para imprimir cada tipo de reporte
+  Future<void> _printFacturacionReport() async {
+    final sales = _lastReportData['sales'] as List<Sale>;
+    final creditTotal = _lastReportData['creditTotal'] as double;
+    final cashTotal = _lastReportData['cashTotal'] as double;
+    final creditPaymentsTotal = _lastReportData['creditPaymentsTotal'] as double;
+    final profitTotal = _lastReportData['profitTotal'] as double;
+    final totalDiscounts = _lastReportData['totalDiscounts'] as double;
+    final startDate = _lastReportData['startDate'] as DateTime;
+    final endDate = _lastReportData['endDate'] as DateTime;
+    final total = creditTotal + cashTotal;
+    final now = DateTime.now();
+    
+    // Imprimir encabezado
+    await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
+    await PrinterHelper.bluetooth.printCustom("REPORTE DE FACTURACIÓN", 1, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    
+    // Fechas
+    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    
+    // Resumen
+    await PrinterHelper.bluetooth.printCustom("RESUMEN DE FACTURACIÓN:", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Facturas emitidas: ${sales.length}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Ventas a crédito: \$${creditTotal.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Ventas al contado: \$${cashTotal.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total ventas: \$${total.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Pagos a crédito: \$${creditPaymentsTotal.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Descuentos: \$${totalDiscounts.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Ganancia: \$${profitTotal.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    
+    // Detalle de facturas (limitado a 20 para no hacer el recibo muy largo)
+    await PrinterHelper.bluetooth.printCustom("DETALLE DE FACTURAS:", 0, 0);
+    int count = 0;
+    for (var sale in sales) {
+      if (count >= 20) {
+        await PrinterHelper.bluetooth.printCustom("... y ${sales.length - 20} facturas más", 0, 0);
+        break;
+      }
+      
+      String line = "F#${sale.id} - ${DateFormat('MM/dd').format(DateTime.parse(sale.date))} - \$${sale.total.toStringAsFixed(2)}";
+      await PrinterHelper.bluetooth.printCustom(line, 0, 0);
+      count++;
+    }
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+  }
+  
+  Future<void> _printInventarioReport() async {
+    final supplier = _lastReportData['supplier'] as Supplier;
+    final entries = _lastReportData['entries'] as List<dynamic>;
+    final products = _lastReportData['products'] as Map<int, dynamic>;
+    final totalQty = _lastReportData['totalQty'] as int;
+    final totalCost = _lastReportData['totalCost'] as double;
+    final startDate = _lastReportData['startDate'] as DateTime;
+    final endDate = _lastReportData['endDate'] as DateTime;
+    final now = DateTime.now();
+    
+    // Imprimir encabezado
+    await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
+    await PrinterHelper.bluetooth.printCustom("REPORTE DE INVENTARIO", 1, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    
+    // Información de proveedor y fechas
+    await PrinterHelper.bluetooth.printCustom("Proveedor: ${supplier.name}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    
+    // Detalle de entradas
+    await PrinterHelper.bluetooth.printCustom("DETALLE DE ENTRADAS:", 0, 0);
+    for (var entry in entries) {
+      final product = products[entry['product_id']];
+      final quantity = entry['quantity'] as int;
+      final cost = entry['cost'] as double;
+      final total = cost * quantity;
+      
+      String productName = product.name;
+      if (productName.length > 16) {
+        productName = productName.substring(0, 16) + "...";
+      }
+      
+      await PrinterHelper.bluetooth.printCustom(productName, 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Cant: $quantity  Costo: \$${cost.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Total: \$${total.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
+    }
+    
+    // Totales
+    await PrinterHelper.bluetooth.printCustom("RESUMEN:", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Cantidad total: $totalQty", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Costo total: \$${totalCost.toStringAsFixed(2)}", 0, 0);
+    
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+  }
+  
+  Future<void> _printPagosCreditoReport() async {
+    final detalles = _lastReportData['detalles'] as List<dynamic>;
+    final totalPagado = _lastReportData['totalPagado'] as double;
+    final startDate = _lastReportData['startDate'] as DateTime;
+    final endDate = _lastReportData['endDate'] as DateTime;
+    final now = DateTime.now();
+    
+    // Imprimir encabezado
+    await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
+    await PrinterHelper.bluetooth.printCustom("PAGOS A CRÉDITO RECIBIDOS", 1, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    
+    // Fechas
+    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    
+    // Detalle de pagos
+    await PrinterHelper.bluetooth.printCustom("DETALLE DE PAGOS:", 0, 0);
+    for (var detalle in detalles) {
+      String cliente = detalle['cliente'];
+      if (cliente.length > 18) {
+        cliente = cliente.substring(0, 18) + "...";
+      }
+      
+      final fecha = DateFormat('yyyy-MM-dd').format(DateTime.parse(detalle['fecha']));
+      final monto = detalle['monto'] as double;
+      
+      await PrinterHelper.bluetooth.printCustom(cliente, 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Fecha: $fecha", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Monto: \$${monto.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
+    }
+    
+    // Total
+    await PrinterHelper.bluetooth.printCustom("TOTAL PAGADO: \$${totalPagado.toStringAsFixed(2)}", 0, 0);
+    
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+  }
+  
+  Future<void> _printGastosReport() async {
+    final gastos = _lastReportData['gastos'] as List<dynamic>;
+    final totalGastos = _lastReportData['totalGastos'] as double;
+    final startDate = _lastReportData['startDate'] as DateTime;
+    final endDate = _lastReportData['endDate'] as DateTime;
+    final now = DateTime.now();
+    
+    // Imprimir encabezado
+    await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
+    await PrinterHelper.bluetooth.printCustom("HISTORIAL DE GASTOS", 1, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    
+    // Fechas
+    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    
+    // Detalle de gastos
+    await PrinterHelper.bluetooth.printCustom("DETALLE DE GASTOS:", 0, 0);
+    for (var gasto in gastos) {
+      String concepto = gasto['expense_name'];
+      if (concepto.length > 20) {
+        concepto = concepto.substring(0, 20) + "...";
+      }
+      
+      final fecha = DateFormat('yyyy-MM-dd').format(DateTime.parse(gasto['date']));
+      final monto = gasto['amount'] as double;
+      
+      await PrinterHelper.bluetooth.printCustom(concepto, 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Fecha: $fecha", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Monto: \$${monto.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
+    }
+    
+    // Total
+    await PrinterHelper.bluetooth.printCustom("TOTAL GASTOS: \$${totalGastos.toStringAsFixed(2)}", 0, 0);
+    
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+  }
+  
+  Future<void> _printResumenGeneralReport() async {
+    final data = _lastReportData['data'] as Map<String, dynamic>;
+    final gananciaBruta = _lastReportData['gananciaBruta'] as double;
+    final gastos = _lastReportData['gastos'] as double;
+    final gananciaNeta = _lastReportData['gananciaNeta'] as double;
+    final startDate = _lastReportData['startDate'] as DateTime;
+    final endDate = _lastReportData['endDate'] as DateTime;
+    final now = DateTime.now();
+    
+    // Imprimir encabezado
+    await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
+    await PrinterHelper.bluetooth.printCustom("RESUMEN GENERAL", 1, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    
+    // Fechas
+    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    
+    // Datos del resumen
+    await PrinterHelper.bluetooth.printCustom("Facturas generadas: ${data['facturas']}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total Ventas: \$${(data['ventas'] as double).toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Pagos a Crédito: \$${(data['pagos_credito'] as double).toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Descuentos: \$${(data['descuentos'] as double).toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Productos Vendidos: ${data['productos']}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Ingreso Inventario: \$${(data['inventario'] as double).toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Gastos: \$${gastos.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Ganancia Estimada: \$${gananciaBruta.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    await PrinterHelper.bluetooth.printCustom("GANANCIA NETA: \$${gananciaNeta.toStringAsFixed(2)}", 1, 0);
+    
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+  }
+  
+  Future<void> _printFacturasClienteReport() async {
+    final cliente = _lastReportData['cliente'] as Client;
+    final nombreCliente = _lastReportData['nombreCliente'] as String;
+    final facturas = _lastReportData['facturas'] as List<dynamic>;
+    final countCredito = _lastReportData['countCredito'] as int;
+    final countContado = _lastReportData['countContado'] as int;
+    final totalCredito = _lastReportData['totalCredito'] as double;
+    final totalContado = _lastReportData['totalContado'] as double;
+    final totalPagado = _lastReportData['totalPagado'] as double;
+    final totalDeuda = _lastReportData['totalDeuda'] as double;
+    final startDate = _lastReportData['startDate'] as DateTime;
+    final endDate = _lastReportData['endDate'] as DateTime;
+    final now = DateTime.now();
+    
+    // Imprimir encabezado
+    await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
+    await PrinterHelper.bluetooth.printCustom("FACTURACIÓN POR CLIENTE", 1, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    
+    // Información del cliente y fechas
+    await PrinterHelper.bluetooth.printCustom("Cliente: $nombreCliente", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Teléfono: ${cliente.phone}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    
+    // Detalle de facturas (limitado a 15 para no hacer el recibo muy largo)
+    await PrinterHelper.bluetooth.printCustom("FACTURAS:", 0, 0);
+    int count = 0;
+    for (var f in facturas) {
+      if (count >= 15) {
+        await PrinterHelper.bluetooth.printCustom("... y ${facturas.length - 15} facturas más", 0, 0);
+        break;
+      }
+      
+      final total = f['total'] as double;
+      final deuda = f['amountDue'] as double;
+      final pagado = total - deuda;
+      final isCredito = f['isCredit'] == 1;
+      final estado = isCredito ? (deuda == 0 ? "PAGADA" : "PENDIENTE") : "";
+      final fecha = DateFormat('yyyy-MM-dd').format(DateTime.parse(f['date']));
+      
+      await PrinterHelper.bluetooth.printCustom("Factura #${f['id']} - $fecha", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Tipo: ${isCredito ? 'Crédito' : 'Contado'} $estado", 0, 0);
+      if (isCredito) {
+        await PrinterHelper.bluetooth.printCustom("Pagado: \$${pagado.toStringAsFixed(2)}", 0, 0);
+      }
+      await PrinterHelper.bluetooth.printCustom("Total: \$${total.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
+      count++;
+    }
+    
+    // Resumen
+    await PrinterHelper.bluetooth.printCustom("RESUMEN:", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Facturas a Crédito: $countCredito", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Facturas al Contado: $countContado", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total a Crédito: \$${totalCredito.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total al Contado: \$${totalContado.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total Pagado (Crédito): \$${totalPagado.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total Adeudado: \$${totalDeuda.toStringAsFixed(2)}", 0, 0);
+    
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+  }
+  
+  Future<void> _printProductosNegocioReport() async {
+    final negocio = _lastReportData['negocio'] as String;
+    final data = _lastReportData['data'] as List<dynamic>;
+    final totalCantidad = _lastReportData['totalCantidad'] as int;
+    final totalDescuento = _lastReportData['totalDescuento'] as double;
+    final totalVentas = _lastReportData['totalVentas'] as double;
+    final totalGanancia = _lastReportData['totalGanancia'] as double;
+    final startDate = _lastReportData['startDate'] as DateTime;
+    final endDate = _lastReportData['endDate'] as DateTime;
+    final now = DateTime.now();
+    
+    // Imprimir encabezado
+    await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
+    await PrinterHelper.bluetooth.printCustom("PRODUCTOS VENDIDOS", 1, 1);
+    await PrinterHelper.bluetooth.printCustom("NEGOCIO: $negocio", 1, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    
+    // Fechas
+    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    
+    // Detalle de productos
+    await PrinterHelper.bluetooth.printCustom("PRODUCTOS VENDIDOS:", 0, 0);
+    for (var row in data) {
+      String producto = row['product_name'];
+      if (producto.length > 20) {
+        producto = producto.substring(0, 20) + "...";
+      }
+      
+      final cantidad = row['total_quantity'] as int;
+      final descuento = row['total_discount'] as double;
+      final ventas = row['total_sales'] as double;
+      
+      await PrinterHelper.bluetooth.printCustom(producto, 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Cant: $cantidad  Desc: \$${descuento.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Total: \$${ventas.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
+    }
+    
+    // Totales
+    await PrinterHelper.bluetooth.printCustom("RESUMEN:", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total Productos: $totalCantidad", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total Descuentos: \$${totalDescuento.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total Ventas: \$${totalVentas.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total Ganancia: \$${totalGanancia.toStringAsFixed(2)}", 0, 0);
+    
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+  }
+  
+  Future<void> _printRentablesReport() async {
+    final data = _lastReportData['data'] as List<dynamic>;
+    final totalArticulos = _lastReportData['totalArticulos'] as int;
+    final totalDescuento = _lastReportData['totalDescuento'] as double;
+    final totalIngreso = _lastReportData['totalIngreso'] as double;
+    final startDate = _lastReportData['startDate'] as DateTime;
+    final endDate = _lastReportData['endDate'] as DateTime;
+    final now = DateTime.now();
+    
+    // Imprimir encabezado
+    await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
+    await PrinterHelper.bluetooth.printCustom("PRODUCTOS RENTABLES", 1, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    
+    // Fechas
+    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
+    
+    // Detalle de productos
+    await PrinterHelper.bluetooth.printCustom("PRODUCTOS RENTABLES:", 0, 0);
+    for (var row in data) {
+      String producto = row['product_name'];
+      if (producto.length > 20) {
+        producto = producto.substring(0, 20) + "...";
+      }
+      
+      final veces = row['times_sold'] as int;
+      final descuento = row['total_discount'] as double;
+      final ingreso = row['total_income'] as double;
+      
+      await PrinterHelper.bluetooth.printCustom(producto, 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Veces: $veces  Desc: \$${descuento.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("Ingreso: \$${ingreso.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
+    }
+    
+    // Totales
+    await PrinterHelper.bluetooth.printCustom("RESUMEN:", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total artículos: $totalArticulos", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total descuentos: \$${totalDescuento.toStringAsFixed(2)}", 0, 0);
+    await PrinterHelper.bluetooth.printCustom("Total ingresos: \$${totalIngreso.toStringAsFixed(2)}", 0, 0);
+    
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
+    await PrinterHelper.bluetooth.printNewLine();
   }
 
   @override
@@ -930,6 +1576,19 @@ class _ReportScreenState extends State<ReportScreen> {
                 minimumSize: const Size.fromHeight(48),
               ),
             ),
+            
+            if (_lastReportData.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _printLastReport,
+                icon: const Icon(Icons.print),
+                label: const Text('Reimprimir Último Reporte'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  backgroundColor: Colors.green,
+                ),
+              ),
+            ],
           ],
         ),
       ),

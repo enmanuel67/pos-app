@@ -7,10 +7,9 @@ class Product {
   final int quantity;
   final double cost;
   final int supplierId;
-  final String createdAt; // 🆕 nuevo campo
+  final String createdAt;
   final String? businessType;
-   final bool? isRentable;
-
+  final bool? isRentable;
 
   Product({
     this.id,
@@ -21,7 +20,7 @@ class Product {
     required this.quantity,
     required this.cost,
     required this.supplierId,
-    required this.createdAt, // 🆕 requerido
+    required this.createdAt,
     required this.businessType,
     this.isRentable,
   });
@@ -49,9 +48,8 @@ class Product {
       cost: cost ?? this.cost,
       supplierId: supplierId ?? this.supplierId,
       createdAt: createdAt ?? this.createdAt,
-      businessType: businessType?? this.businessType,
+      businessType: businessType ?? this.businessType,
       isRentable: isRentable ?? this.isRentable,
-
     );
   }
 
@@ -65,7 +63,7 @@ class Product {
       'quantity': quantity,
       'cost': cost,
       'supplierId': supplierId,
-      'createdAt': createdAt, // 🆕 exportar
+      'createdAt': createdAt,
       'business_type': businessType,
       'is_rentable': isRentable == true ? 1 : 0,
     };
@@ -77,11 +75,11 @@ class Product {
       name: map['name'],
       barcode: map['barcode'],
       description: map['description'],
-      price: map['price'],
+      price: map['price'].toDouble(),
       quantity: map['quantity'],
-      cost: map['cost'],
+      cost: map['cost'].toDouble(),
       supplierId: map['supplierId'],
-      createdAt: map['createdAt'], // 🆕 importar
+      createdAt: map['createdAt'],
       businessType: map['business_type'],
       isRentable: map['is_rentable'] == 1,
     );
