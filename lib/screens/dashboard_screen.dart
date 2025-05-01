@@ -4,6 +4,7 @@ import 'package:pos_app/screens/help_screen.dart';
 import 'package:pos_app/screens/inventory_screen.dart';
 import 'package:pos_app/screens/billing_screen.dart';
 import 'package:pos_app/screens/clients_screen.dart';
+import 'package:pos_app/screens/print_test_screen.dart';
 import 'package:pos_app/screens/report_screen.dart';
 import 'package:pos_app/screens/sales_history_screen.dart';
 import 'package:pos_app/screens/suppliers_screen.dart';
@@ -41,6 +42,9 @@ class DashboardScreen extends StatelessWidget {
       }),
       _DashboardItem('Ayuda', Icons.question_mark_rounded, () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => HelpScreen()));
+      }),
+      _DashboardItem('prueba de printer', Icons.question_mark_rounded, () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => PrintTestScreen()));
       }),
       
     ];

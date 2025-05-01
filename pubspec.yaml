@@ -41,6 +41,7 @@ dependencies:
   screenshot: ^1.3.0
   blue_thermal_printer:
     path: lib/plugins/blue_thermal_printer
+ 
 
 
 

@@ -4,6 +4,9 @@ import 'package:pos_app/models/product.dart';
 import 'create_product_screen.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 import '../helpers/printer_helper.dart';
+import 'package:flutter/rendering.dart';
+import 'dart:ui' as ui;
+
 
 class InventoryScreen extends StatefulWidget {
   final String? initialBarcode;
@@ -25,7 +28,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
   final priceController = TextEditingController();
   final costController = TextEditingController();
   final GlobalKey previewKey = GlobalKey();
-  
 
   Product? _selectedProduct;
   String? _notFoundBarcode;
@@ -116,149 +118,359 @@ class _InventoryScreenState extends State<InventoryScreen> {
     });
   }
 
-  
+  // Optimización de la función de impresión de stickers
+// Reemplaza el código actual de impresión por esta versión optimizada
 
-  Future<void> _printSticker() async {
-    if (_selectedProduct == null) {
+// Función optimizada de impresión de stickers para inventory_screen.dart
+// Esta función debe ir DENTRO de la clase _InventoryScreenState
+
+Future<void> _printSticker() async {
+  if (_selectedProduct == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Primero selecciona un producto.')),
+    );
+    return;
+  }
+
+  final truncatedName =
+      (_selectedProduct!.name.length > 20)
+          ? '${_selectedProduct!.name.substring(0, 20)}…'
+          : _selectedProduct!.name;
+
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Vista previa del Sticker'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          RepaintBoundary(
+            key: previewKey,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(),
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.white,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  BarcodeWidget(
+                    barcode: Barcode.code128(),
+                    data: _selectedProduct!.barcode.isEmpty
+                        ? '0'
+                        : _selectedProduct!.barcode,
+                    width: 110,
+                    height: 35,
+                    drawText: false,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    truncatedName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    '\$${_selectedProduct!.price.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 10,
+                    ),
+                  ),
+                  const SizedBox(height: 20), // espacio para terminar el sticker
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cerrar'),
+        ),
+        ElevatedButton(
+          onPressed: () async {
+            final controller = TextEditingController(text: '1');
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('¿Cuántos stickers deseas imprimir?'),
+                content: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Cantidad'),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Imprimir'),
+                  ),
+                ],
+              ),
+            );
+
+            if (confirmed == true) {
+              final cantidad = int.tryParse(controller.text.trim()) ?? 1;
+
+              if (cantidad > 50) {
+                final seguro = await showDialog<bool>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Confirmación'),
+                    content: Text('¿Deseas imprimir $cantidad stickers?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('No'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Sí'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (seguro != true) return;
+              }
+
+              _printMultipleStickers(cantidad);
+            }
+          },
+          child: const Text('Imprimir Sticker'),
+        ),
+      ],
+    ),
+  );
+}
+
+// Función optimizada para imprimir múltiples stickers
+Future<void> _printMultipleStickers(int cantidad) async {
+  try {
+    // Mostrar indicador de progreso
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text("Preparando impresión..."),
+            ],
+          ),
+        );
+      },
+    );
+    
+    // 1. Verificar la conexión a la impresora primero
+    final connected = await PrinterHelper.connectToPrinter();
+    if (!connected) {
+      Navigator.pop(context); // Cerrar diálogo de progreso
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Primero selecciona un producto.')),
+        SnackBar(content: Text('No se pudo conectar a la impresora')),
       );
       return;
     }
-
-
-    int quantity = 1;
-    final controller = TextEditingController(text: '1');
-
-    final confirm = await showDialog<bool>(
+    
+    // 2. Capturar la imagen una sola vez (no en cada iteración)
+    final boundary = previewKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+    final image = await boundary.toImage(pixelRatio: 2);
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    
+    if (byteData == null) {
+      Navigator.pop(context); // Cerrar diálogo de progreso
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo capturar la imagen del sticker')),
+      );
+      return;
+    }
+    
+    final imageBytes = byteData.buffer.asUint8List();
+    
+    // 3. Redimensionar una sola vez
+    final resizedImage = await PrinterHelper.resizeImageToSize(
+      originalBytes: imageBytes,
+      targetWidth: 350,
+      targetHeight: 200,
+    );
+    
+    // Actualizar mensaje de progreso
+    Navigator.pop(context); // Cerrar diálogo inicial
+    
+    // Mostrar nuevo diálogo con progreso
+    showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('¿Cuántos stickers deseas imprimir?'),
-            content: TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Cantidad'),
-            ),
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text("Imprimiendo stickers: 0/$cantidad"),
+                  SizedBox(height: 8),
+                  LinearProgressIndicator(value: 0),
+                ],
+              ),
+            );
+          }
+        );
+      },
+    );
+    
+    // 4. Usar un mejor esquema de impresión por lotes
+    const loteSize = 5; // Número de stickers a imprimir en cada lote
+    int stickersImpresos = 0;
+    
+    for (int i = 0; i < cantidad; i += loteSize) {
+      // Determinar cuántos stickers imprimir en este lote
+      final stickersEnLote = (i + loteSize <= cantidad) ? loteSize : (cantidad - i);
+      
+      // Imprimir el lote actual
+      for (int j = 0; j < stickersEnLote; j++) {
+        await PrinterHelper.printImage(resizedImage);
+        
+        // Solo agregar líneas en blanco entre stickers, no después del último
+        if (j < stickersEnLote - 1) {
+          await PrinterHelper.printNewLines(2);
+        }
+        
+        // Actualizar contador
+        stickersImpresos++;
+        
+        // Actualizar el diálogo (solo cada 5 stickers para no sobrecargar la UI)
+        if (stickersImpresos % 5 == 0 || stickersImpresos == cantidad) {
+          // Cerrar y volver a abrir el diálogo con valores actualizados
+          Navigator.pop(context);
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text("Imprimiendo stickers: $stickersImpresos/$cantidad"),
+                    SizedBox(height: 8),
+                    LinearProgressIndicator(value: stickersImpresos / cantidad),
+                  ],
+                ),
+              );
+            },
+          );
+        }
+      }
+      
+      // Hacer una pausa entre lotes para evitar sobrecarga de la impresora
+      if (i + loteSize < cantidad) {
+        await Future.delayed(const Duration(milliseconds: 1000));
+      }
+    }
+    
+    // 5. Finalizar con líneas adicionales
+    await PrinterHelper.printNewLines(4);
+    
+    // Cerrar diálogo de progreso
+    Navigator.pop(context);
+    
+    // Mostrar mensaje de éxito
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Se imprimieron $cantidad stickers correctamente')),
+    );
+    
+    // Cerrar el diálogo de vista previa
+    Navigator.pop(context);
+    
+  } catch (e) {
+    // Asegurarse de cerrar cualquier diálogo abierto
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+    
+    print('❌ Error al imprimir stickers: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error al imprimir: $e')),
+    );
+  }
+}
+
+// Esta versión optimizada se llama directamente desde el botón "Imprimir" de la vista previa
+// Reemplaza la sección del código de impresión actual con esta llamada:
+
+/*
+ElevatedButton(
+  onPressed: () async {
+    final controller = TextEditingController(text: '1');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('¿Cuántos stickers deseas imprimir?'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Cantidad'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Imprimir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final cantidad = int.tryParse(controller.text.trim()) ?? 1;
+
+      if (cantidad > 50) {
+        final seguro = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Confirmación'),
+            content: Text('¿Deseas imprimir $cantidad stickers?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancelar'),
+                child: const Text('No'),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Confirmar'),
+                child: const Text('Sí'),
               ),
             ],
           ),
-    );
+        );
 
-    if (confirm != true) return;
+        if (seguro != true) return;
+      }
 
-    quantity = int.tryParse(controller.text) ?? 1;
-
-    if (quantity > 50) {
-      final sure = await showDialog<bool>(
-        context: context,
-        builder:
-            (_) => AlertDialog(
-              title: const Text('¿Seguro?'),
-              content: Text(
-                'Estás intentando imprimir $quantity stickers. ¿Continuar?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('No'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Sí'),
-                ),
-              ],
-            ),
-      );
-      if (sure != true) return;
+      // Llamar a la función optimizada
+      _printStickers(cantidad);
     }
-
-    final truncatedName =
-        (_selectedProduct!.name.length > 20)
-            ? '${_selectedProduct!.name.substring(0, 20)}…'
-            : _selectedProduct!.name;
-
-    showDialog(
-      context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Vista previa del Sticker'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RepaintBoundary(
-                  key: previewKey,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(),
-                      borderRadius: BorderRadius.circular(8),
-                      color: Colors.white, // Asegura fondo blanco
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        BarcodeWidget(
-                          barcode: Barcode.code128(),
-                          data:
-                              _selectedProduct!.barcode.isEmpty
-                                  ? '0'
-                                  : _selectedProduct!.barcode,
-                          width: 125,
-                          height: 35,
-                          drawText: false,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          truncatedName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                        Text(
-                          '\$${_selectedProduct!.price.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10,
-                          ),
-                        ),
-                        const SizedBox(height: 20), // 👈 Esto fuerza más papel abajo
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cerrar'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  // 👈 necesita ser async
-                  await PrinterHelper.printSticker(
-                    name: _selectedProduct!.name,
-                    price: _selectedProduct!.price,
-                    barcodeData: _selectedProduct!.barcode,
-                    previewKey: previewKey, // 👈 ahora pasa la key también
-                  );
-                },
-                child: const Text('Imprimir Sticker'),
-              ),
-            ],
-          ),
-    );
-  }
+  },
+  child: const Text('Imprimir Sticker'),
+),
+*/
 
   @override
   Widget build(BuildContext context) {
