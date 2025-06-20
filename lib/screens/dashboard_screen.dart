@@ -47,7 +47,7 @@ class DashboardScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('POS Dashboard'),
+        title: const Text('Decoyamix Dashboard'),
         centerTitle: true,
       ),
       body: Padding(
