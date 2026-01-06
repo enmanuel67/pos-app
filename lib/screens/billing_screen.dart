@@ -11,7 +11,7 @@ class BillingScreen extends StatefulWidget {
 }
 
 class _BillingScreenState extends State<BillingScreen> {
-  TextEditingController _searchController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   List<Client> _clients = [];
   List<Client> _filteredClients = [];
   Client? _selectedClient;
@@ -25,6 +25,7 @@ class _BillingScreenState extends State<BillingScreen> {
 
   Future<void> _loadClients() async {
     final clients = await DBHelper.getClients();
+    if (!mounted) return;
     setState(() {
       _clients = clients;
       _filteredClients = clients;
@@ -32,11 +33,13 @@ class _BillingScreenState extends State<BillingScreen> {
   }
 
   void _filterClients() {
-    final query = _searchController.text.trim();
+    final query = _searchController.text.trim().toLowerCase();
+
     setState(() {
-      _filteredClients = _clients
-          .where((client) => client.phone.contains(query))
-          .toList();
+      _filteredClients = _clients.where((client) {
+        final fullName = '${client.name} ${client.lastName}'.toLowerCase();
+        return fullName.contains(query);
+      }).toList();
     });
   }
 
@@ -50,6 +53,13 @@ class _BillingScreenState extends State<BillingScreen> {
   }
 
   @override
+  void dispose() {
+    _searchController.removeListener(_filterClients);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Facturación')),
@@ -59,38 +69,38 @@ class _BillingScreenState extends State<BillingScreen> {
           children: [
             TextField(
               controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Buscar cliente por teléfono',
+              decoration: const InputDecoration(
+                labelText: 'Buscar cliente por nombre',
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
               ),
-              keyboardType: TextInputType.phone,
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             Expanded(
               child: ListView.builder(
                 itemCount: _filteredClients.length,
                 itemBuilder: (_, index) {
                   final client = _filteredClients[index];
                   final isSelected = _selectedClient?.phone == client.phone;
+
                   return ListTile(
                     title: Text('${client.name} ${client.lastName}'),
                     subtitle: Text(client.phone),
-                    tileColor: isSelected ? Colors.blue.shade100 : null,
+                    tileColor: isSelected ? Colors.blueAccent.withOpacity(0.15) : null,
                     onTap: () {
                       setState(() {
                         _selectedClient = client;
-                        _searchController.text = client.phone;
+                        _searchController.text = '${client.name} ${client.lastName}';
                       });
                     },
                   );
                 },
               ),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _goToSalesScreen,
-              child: Text('Continuar con factura'),
+              child: const Text('Continuar con factura'),
             ),
           ],
         ),

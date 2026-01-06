@@ -24,121 +24,150 @@ class DBHelper {
   }
 
   static Future<Database> initDB() async {
-    final path = join(await getDatabasesPath(), 'pos.db');
-    return openDatabase(
-      path,
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-         CREATE TABLE products (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT,
-  barcode TEXT,
-  description TEXT,
-  business_type TEXT,
-  price REAL,
-  quantity INTEGER,
-  cost REAL,
-  supplierId INTEGER,
-  is_rentable INTEGER DEFAULT 0,
-  createdAt TEXT, -- 🆕 Fecha de creación
-  FOREIGN KEY (supplierId) REFERENCES suppliers(id)
-);
+  final path = join(await getDatabasesPath(), 'pos.db');
 
-        ''');
+  return openDatabase(
+    path,
+    version: 2, // ✅ subimos versión para poder agregar columnas nuevas
+    onCreate: (db, version) async {
+      await db.execute('''
+        CREATE TABLE products (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT,
+          barcode TEXT,
+          description TEXT,
+          business_type TEXT,
+          price REAL,
+          quantity INTEGER,
+          cost REAL,
+          supplierId INTEGER,
+          is_rentable INTEGER DEFAULT 0,
+          createdAt TEXT,
+          FOREIGN KEY (supplierId) REFERENCES suppliers(id)
+        );
+      ''');
 
-        await db.execute('''
-          CREATE TABLE suppliers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            phone TEXT,
-            description TEXT,
-            address TEXT,
-            email TEXT
-          )
-        ''');
+      await db.execute('''
+        CREATE TABLE suppliers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT,
+          phone TEXT,
+          description TEXT,
+          address TEXT,
+          email TEXT
+        );
+      ''');
 
-        await db.execute('''
-          CREATE TABLE clients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            lastName TEXT,
-            phone TEXT,
-            address TEXT,
-            email TEXT,
-            hasCredit INTEGER,
-            creditLimit REAL,
-            credit REAL,
-            creditAvailable REAL
-          )
-        ''');
+      await db.execute('''
+        CREATE TABLE clients (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT,
+          lastName TEXT,
+          phone TEXT,
+          address TEXT,
+          email TEXT,
+          hasCredit INTEGER,
+          creditLimit REAL,
+          credit REAL,
+          creditAvailable REAL
+        );
+      ''');
 
-        await db.execute('''
-          CREATE TABLE sales (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  date TEXT,
-  total REAL,               -- Monto total original de la factura
-  amountDue REAL DEFAULT 0, -- Monto restante por pagar
-  clientPhone TEXT,
-  isCredit INTEGER,         -- 1 si es a crédito, 0 si es contado
-  isPaid INTEGER DEFAULT 0  -- 1 si ya se pagó todo, 0 si aún se debe
-)
-        ''');
+      await db.execute('''
+        CREATE TABLE sales (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date TEXT,
+          total REAL,
+          amountDue REAL DEFAULT 0,
+          clientPhone TEXT,
+          isCredit INTEGER,
+          isPaid INTEGER DEFAULT 0,
 
-        await db.execute('''
-          CREATE TABLE sale_items (
+          -- ✅ NUEVO (para "eliminar" factura sin perder historial)
+          isVoided INTEGER DEFAULT 0,
+          voidedAt TEXT
+        );
+      ''');
+
+      await db.execute('''
+        CREATE TABLE sale_items (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           sale_id INTEGER,
           product_id INTEGER,
           quantity INTEGER,
           subtotal REAL,
-          discount REAL, 
+          discount REAL,
           FOREIGN KEY (sale_id) REFERENCES sales(id)
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE inventory_entries (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  product_id INTEGER,
-  supplier_id INTEGER,
-  quantity INTEGER,
-  cost REAL,
-  date TEXT,
-  FOREIGN KEY (product_id) REFERENCES products(id),
-  FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
-)
-        ''');
+        );
+      ''');
 
-        await db.execute('''
-  CREATE TABLE expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT
-  )
-''');
+      await db.execute('''
+        CREATE TABLE inventory_entries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER,
+          supplier_id INTEGER,
+          quantity INTEGER,
+          cost REAL,
+          date TEXT,
+          FOREIGN KEY (product_id) REFERENCES products(id),
+          FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+        );
+      ''');
 
-        await db.execute('''
-  CREATE TABLE expense_entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    expense_id INTEGER,
-    amount REAL,
-    date TEXT,
-    FOREIGN KEY (expense_id) REFERENCES expenses(id)
-  )
-''');
-        await db.execute('''
-    CREATE TABLE payment_history(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      client_phone TEXT,
-      amount REAL,
-      payment_date TEXT,
-      receipt_number TEXT,
-      affected_sales TEXT,
-      created_at TEXT
-    )
-  ''');
-      },
-    );
-  }
+      await db.execute('''
+        CREATE TABLE expenses (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT
+        );
+      ''');
+
+      await db.execute('''
+        CREATE TABLE expense_entries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          expense_id INTEGER,
+          amount REAL,
+          date TEXT,
+          FOREIGN KEY (expense_id) REFERENCES expenses(id)
+        );
+      ''');
+
+      await db.execute('''
+        CREATE TABLE payment_history(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_phone TEXT,
+          amount REAL,
+          payment_date TEXT,
+          receipt_number TEXT,
+          affected_sales TEXT,
+          created_at TEXT
+        );
+      ''');
+    },
+
+    // ✅ IMPORTANTE: si el usuario ya tiene DB creada, esto le agrega columnas sin borrar nada
+    onUpgrade: (db, oldVersion, newVersion) async {
+      if (oldVersion < 2) {
+        // ✅ PRODUCTS
+        try {
+          await db.execute(
+              "ALTER TABLE products ADD COLUMN is_rentable INTEGER DEFAULT 0");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE products ADD COLUMN createdAt TEXT");
+        } catch (_) {}
+
+        // ✅ SALES (void/anulada)
+        try {
+          await db.execute(
+              "ALTER TABLE sales ADD COLUMN isVoided INTEGER DEFAULT 0");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE sales ADD COLUMN voidedAt TEXT");
+        } catch (_) {}
+      }
+    },
+  );
+}
 
   static Future<void> deleteDatabaseFile() async {
     final path = join(await getDatabasesPath(), 'pos.db');
@@ -213,10 +242,14 @@ class DBHelper {
   }
 
   static Future<List<Product>> getProducts() async {
-    final dbClient = await db;
-    final maps = await dbClient.query('products');
-    return maps.map((e) => Product.fromMap(e)).toList();
-  }
+  final dbClient = await db;
+  final maps = await dbClient.query(
+    'products',
+    orderBy: 'datetime(createdAt) DESC', // ✅ más nuevo primero
+  );
+  return maps.map((e) => Product.fromMap(e)).toList();
+}
+
 
   static Future<int> insertProduct(Product product) async {
     final dbClient = await db;
@@ -240,41 +273,47 @@ class DBHelper {
     await dbClient.delete('products', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<void> reduceProductStock(int productId, int quantity) async {
-    final dbClient = await db;
-    final result = await dbClient.query(
+Future<void> reduceProductStock(int productId, int quantity) async {
+  final dbClient = await db;
+
+  final result = await dbClient.query(
+    'products',
+    where: 'id = ?',
+    whereArgs: [productId],
+    limit: 1,
+  );
+
+  if (result.isEmpty) return;
+
+  final row = result.first;
+
+  // ✅ Si es rentable, NO bajar inventario (producto “infinito”)
+  final isRentable = (row['is_rentable'] as int?) == 1;
+  if (isRentable) return;
+
+  final currentQty = (row['quantity'] as num?)?.toInt() ?? 0;
+  final newQty = currentQty - quantity;
+
+  await dbClient.update(
+    'products',
+    {'quantity': newQty},
+    where: 'id = ?',
+    whereArgs: [productId],
+  );
+
+  // ✅ Verificación de stock bajo (solo productos NO rentables)
+  if (newQty <= 5) {
+    print('⚠ Bajo inventario para producto ID $productId ($newQty unidades)');
+
+    final lowStock = await dbClient.query(
       'products',
-      where: 'id = ?',
-      whereArgs: [productId],
+      where: 'quantity <= ? AND (is_rentable IS NULL OR is_rentable = 0)',
+      whereArgs: [5],
     );
-
-    if (result.isNotEmpty) {
-      final currentQty = result.first['quantity'] as int;
-      final newQty = currentQty - quantity;
-
-      await dbClient.update(
-        'products',
-        {'quantity': newQty},
-        where: 'id = ?',
-        whereArgs: [productId],
-      );
-
-      // Verificación de stock bajo
-      if (newQty <= 5) {
-        print(
-          '⚠ Bajo inventario para producto ID $productId ($newQty unidades)',
-        );
-
-        // Recalcular el total de productos con bajo inventario
-        final lowStock = await dbClient.query(
-          'products',
-          where: 'quantity <= ?',
-          whereArgs: [5],
-        );
-        InventoryNotifier.lowStockCount.value = lowStock.length;
-      }
-    }
+    InventoryNotifier.lowStockCount.value = lowStock.length;
   }
+}
+
 
   static Future<Product?> getProductByBarcode(String barcode) async {
     final dbClient = await db;
@@ -309,7 +348,9 @@ class DBHelper {
     FROM sale_items si
     JOIN sales s ON si.sale_id = s.id
     JOIN products p ON si.product_id = p.id
-    WHERE p.business_type = ? AND date(s.date) BETWEEN ? AND ?
+     WHERE p.business_type = ?
+      AND date(s.date) BETWEEN ? AND ?
+      AND (s.isVoided IS NULL OR s.isVoided = 0)   -- ✅ EXCLUIR ANULADAS
     GROUP BY si.product_id
     ORDER BY total_quantity DESC
   ''',
@@ -384,6 +425,27 @@ class DBHelper {
     );
     return result;
   }
+
+  static Future<DateTime?> getLastInventoryEntryDate(int productId) async {
+  final dbClient = await db;
+
+  final result = await dbClient.query(
+    'inventory_entries',
+    columns: ['date'],
+    where: 'product_id = ?',
+    whereArgs: [productId],
+    orderBy: 'date DESC',
+    limit: 1,
+  );
+
+  if (result.isEmpty) return null;
+
+  final raw = result.first['date'] as String?;
+  if (raw == null || raw.isEmpty) return null;
+
+  return DateTime.tryParse(raw);
+}
+
 
   // ─────────────── CLIENTS ───────────────
   static Future<int> insertClient(Client client) async {
@@ -597,12 +659,19 @@ class DBHelper {
     }
   }
 
-  // ───────────────History SALES ───────────────
-  static Future<List<Sale>> getAllSales() async {
-    final dbClient = await db;
-    final result = await dbClient.query('sales');
-    return result.map((e) => Sale.fromMap(e)).toList();
-  }
+// ─────────────── History SALES (Auditoría) ───────────────
+static Future<List<Sale>> getAllSales() async {
+  final dbClient = await db;
+
+  final result = await dbClient.query(
+    'sales',
+    orderBy: 'date DESC',
+  );
+
+  return result.map((e) => Sale.fromMap(e)).toList();
+}
+
+
 
   // Obtener los ítems (productos vendidos) de una venta específica
   static Future<List<SaleItem>> getSaleItems(int saleId) async {
@@ -737,108 +806,116 @@ class DBHelper {
   }
 
   static Future<Map<String, dynamic>> getResumenGeneral(
-    DateTime start,
-    DateTime end,
-  ) async {
-    final dbClient = await db;
+  DateTime start,
+  DateTime end,
+) async {
+  final dbClient = await db;
 
-    // Ventas filtradas por fecha
-    final sales = await dbClient.query(
-      'sales',
-      where: 'date BETWEEN ? AND ?',
-      whereArgs: [
-        start.toIso8601String(),
-        end.add(const Duration(days: 1)).toIso8601String(),
-      ],
+  // ✅ Ventas filtradas por fecha (EXCLUYE anuladas)
+  final sales = await dbClient.query(
+    'sales',
+    where: 'date BETWEEN ? AND ? AND (isVoided IS NULL OR isVoided = 0)',
+    whereArgs: [
+      start.toIso8601String(),
+      end.add(const Duration(days: 1)).toIso8601String(),
+    ],
+  );
+
+  int totalFacturas = sales.length;
+  double totalVentas = 0.0;
+  double pagosCredito = 0.0;
+  double descuentos = 0.0;
+  double ganancia = 0.0;
+  int productosVendidos = 0;
+
+  for (var sale in sales) {
+    totalVentas += (sale['total'] as num?)?.toDouble() ?? 0.0;
+
+    final saleId = sale['id'] as int;
+    final items = await dbClient.query(
+      'sale_items',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
     );
 
-    int totalFacturas = sales.length;
-    double totalVentas = 0;
-    double pagosCredito = 0;
-    double descuentos = 0;
-    double ganancia = 0;
-    int productosVendidos = 0;
+    for (var item in items) {
+      final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+      if (quantity <= 0) continue;
 
-    for (var sale in sales) {
-      totalVentas += sale['total'] as double;
+      final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
+      final discount = (item['discount'] as num?)?.toDouble() ?? 0.0;
+      final productId = item['product_id'] as int;
 
-      final saleId = sale['id'] as int;
-      final items = await dbClient.query(
-        'sale_items',
-        where: 'sale_id = ?',
-        whereArgs: [saleId],
+      productosVendidos += quantity;
+      descuentos += discount * quantity;
+
+      final product = await dbClient.query(
+        'products',
+        columns: ['cost'],
+        where: 'id = ?',
+        whereArgs: [productId],
+        limit: 1,
       );
 
-      for (var item in items) {
-        final quantity = item['quantity'] as int;
-        final subtotal = item['subtotal'] as double;
-        final discount = item['discount'] as double;
-        final productId = item['product_id'] as int;
-
-        productosVendidos += quantity;
-        descuentos += discount * quantity;
-
-        final product = await dbClient.query(
-          'products',
-          where: 'id = ?',
-          whereArgs: [productId],
-        );
-        if (product.isNotEmpty) {
-          final cost = product.first['cost'] as double;
-          ganancia += ((subtotal / quantity) - cost) * quantity;
-        }
-      }
-
-      if ((sale['isCredit'] as int) == 1) {
-        pagosCredito +=
-            (sale['total'] as double) - (sale['amountDue'] as double);
+      if (product.isNotEmpty) {
+        final cost = (product.first['cost'] as num?)?.toDouble() ?? 0.0;
+        ganancia += ((subtotal / quantity) - cost) * quantity;
       }
     }
 
-    // Entradas de inventario
-    final inventory = await dbClient.query(
-      'inventory_entries',
-      where: 'date BETWEEN ? AND ?',
-      whereArgs: [
-        start.toIso8601String(),
-        end.add(const Duration(days: 1)).toIso8601String(),
-      ],
-    );
+    if ((sale['isCredit'] as int? ?? 0) == 1) {
+      final total = (sale['total'] as num?)?.toDouble() ?? 0.0;
+      final amountDue = (sale['amountDue'] as num?)?.toDouble() ?? 0.0;
+      pagosCredito += (total - amountDue);
+    }
+  }
 
-    double totalInventario = inventory.fold(
-      0.0,
-      (sum, e) => sum + ((e['cost'] as double) * (e['quantity'] as int)),
-    );
+  // Entradas de inventario (esto NO depende de sales, así que se queda igual)
+  final inventory = await dbClient.query(
+    'inventory_entries',
+    where: 'date BETWEEN ? AND ?',
+    whereArgs: [
+      start.toIso8601String(),
+      end.add(const Duration(days: 1)).toIso8601String(),
+    ],
+  );
 
-    // Gastos
-    final gastos = await dbClient.rawQuery(
-      '''
+  double totalInventario = inventory.fold(
+    0.0,
+    (sum, e) =>
+        sum + (((e['cost'] as num?)?.toDouble() ?? 0.0) * ((e['quantity'] as num?)?.toInt() ?? 0)),
+  );
+
+  // Gastos
+  final gastos = await dbClient.rawQuery(
+    '''
     SELECT SUM(ee.amount) as totalGastos
     FROM expense_entries ee
     WHERE date(ee.date) BETWEEN ? AND ?
-  ''',
-      [
-        start.toIso8601String().split('T').first,
-        end.toIso8601String().split('T').first,
-      ],
-    );
+    ''',
+    [
+      start.toIso8601String().split('T').first,
+      end.toIso8601String().split('T').first,
+    ],
+  );
 
-    double totalGastos =
-        gastos.first['totalGastos'] != null
-            ? (gastos.first['totalGastos'] as num).toDouble()
-            : 0.0;
+  double totalGastos =
+      gastos.first['totalGastos'] != null
+          ? (gastos.first['totalGastos'] as num).toDouble()
+          : 0.0;
 
-    return {
-      'facturas': totalFacturas,
-      'ventas': totalVentas,
-      'pagos_credito': pagosCredito,
-      'descuentos': descuentos,
-      'ganancia': ganancia,
-      'productos': productosVendidos,
-      'inventario': totalInventario,
-      'gastos': totalGastos,
-    };
-  }
+  return {
+    'facturas': totalFacturas,
+    'ventas': totalVentas,
+    'pagos_credito': pagosCredito,
+    'descuentos': descuentos,
+    'ganancia': ganancia,
+    'productos': productosVendidos,
+    'inventario': totalInventario,
+    'gastos': totalGastos,
+  };
+}
+
 
   static Future<List<Map<String, dynamic>>> getFacturasPorCliente(
     String phone,
@@ -876,7 +953,9 @@ class DBHelper {
     FROM sale_items si
     JOIN sales s ON si.sale_id = s.id
     JOIN products p ON si.product_id = p.id
-    WHERE p.is_rentable = 1 AND date(s.date) BETWEEN ? AND ?
+    WHERE p.is_rentable = 1 
+      AND date(s.date) BETWEEN ? AND ?
+      AND (s.isVoided IS NULL OR s.isVoided = 0) 
     GROUP BY si.product_id
     ORDER BY total_income DESC
   ''',
@@ -964,4 +1043,111 @@ static Future<List<Map<String, dynamic>>> getPaymentHistoryByDateRange(
 
   return result;
 }
+
+
+// Anular venta + devolver inventario + arreglar crédito
+
+static Future<void> voidSaleAndRestock(int saleId) async {
+  final dbClient = await db;
+
+  await dbClient.transaction((txn) async {
+    // 1) Leer la venta
+    final saleRes = await txn.query(
+      'sales',
+      where: 'id = ?',
+      whereArgs: [saleId],
+      limit: 1,
+    );
+    if (saleRes.isEmpty) throw Exception("Venta no existe");
+
+    final sale = saleRes.first;
+
+    // si ya está anulada, no hacer nada
+    final isVoided = (sale['isVoided'] ?? 0) as int;
+    if (isVoided == 1) return;
+
+    final isCredit = (sale['isCredit'] as int) == 1;
+    final total = (sale['total'] as num).toDouble();
+    final amountDue = (sale['amountDue'] as num).toDouble();
+    final clientPhone = sale['clientPhone'] as String?;
+
+    // 2) Obtener items de la venta
+    final items = await txn.query(
+      'sale_items',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+    );
+
+    // 3) Devolver inventario
+    for (final it in items) {
+      final productId = it['product_id'] as int;
+      final qty = (it['quantity'] as num).toInt();
+
+      await txn.rawUpdate(
+        'UPDATE products SET quantity = quantity + ? WHERE id = ?',
+        [qty, productId],
+      );
+    }
+
+    // 4) Si era crédito, revertir el crédito del cliente
+    // pagosRecibidos = total - amountDue
+    if (isCredit && clientPhone != null && clientPhone.isNotEmpty) {
+      final clientRes = await txn.query(
+        'clients',
+        where: 'phone = ?',
+        whereArgs: [clientPhone],
+        limit: 1,
+      );
+
+      if (clientRes.isNotEmpty) {
+        final client = clientRes.first;
+
+        final credit = (client['credit'] as num?)?.toDouble() ?? 0.0;
+        final creditLimit = (client['creditLimit'] as num?)?.toDouble() ?? 0.0;
+        final creditAvailable =
+            (client['creditAvailable'] as num?)?.toDouble() ?? 0.0;
+
+        // En tu lógica: credit = deuda, creditAvailable = disponible
+        // Esta venta aportó:
+        // - deudaGenerada = amountDue (lo que aún debía)
+        // - pagosRecibidos = total - amountDue (ya pagado)
+        final deudaGenerada = amountDue;
+        final pagosRecibidos = total - amountDue;
+
+        final newCredit = (credit - deudaGenerada).clamp(0.0, creditLimit);
+        final newAvailable = (creditAvailable + deudaGenerada).clamp(
+          0.0,
+          creditLimit,
+        );
+
+        await txn.update(
+          'clients',
+          {'credit': newCredit, 'creditAvailable': newAvailable},
+          where: 'phone = ?',
+          whereArgs: [clientPhone],
+        );
+
+        // Nota importante:
+        // Si tú guardas recibos en payment_history relacionados a esta sale,
+        // idealmente deberías marcarlos como anulados también.
+        // (Más abajo te digo cómo).
+      }
+    }
+
+    // 5) Marcar venta como anulada (esto la saca de reportes)
+    await txn.update(
+      'sales',
+      {
+        'isVoided': 1,
+        'voidedAt': DateTime.now().toIso8601String(),
+        'total': 0.0,
+        'amountDue': 0.0,
+        'isPaid': 1,
+      },
+      where: 'id = ?',
+      whereArgs: [saleId],
+    );
+  });
+}
+
 }

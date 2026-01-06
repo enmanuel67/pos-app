@@ -22,9 +22,15 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
   Client? _client;
   final GlobalKey _receiptKey = GlobalKey();
 
+  // ✅ estado local para reflejar cambios al anular sin depender de reconstrucción externa
+  late bool _isVoided;
+  String? _voidedAt;
+
   @override
   void initState() {
     super.initState();
+    _isVoided = widget.sale.isVoided;
+    _voidedAt = widget.sale.voidedAt;
     _loadDetails();
   }
 
@@ -52,10 +58,14 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
     );
   }
 
-  // Construye el widget de factura para mostrar y reimprimir
+  // ✅ Construye el widget de factura para mostrar y reimprimir
   Widget _buildReceiptWidget() {
     final totalDiscount = _calculateTotalDiscount();
-    
+
+    final clientName =
+        _client != null ? "${_client!.name} ${_client!.lastName}" : "Desconocido";
+    final clientPhone = _client?.phone ?? "Sin teléfono";
+
     return Material(
       color: Colors.white,
       child: Padding(
@@ -74,93 +84,105 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
                       color: Colors.red,
                     ),
                   ),
-                  SizedBox(height: 4),
-                  Text(
+                  if (_isVoided)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Text(
+                        '*** FACTURA ANULADA ***',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                  const Text(
                     'DECOYAMIX',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  Text('calle Atilio Pérez, Cutupú, La Vega'),
-                  Text('(frente al parque)'),
-                  Text('829-940-5937'),
+                  const Text('calle Atilio Pérez, Cutupú, La Vega'),
+                  const Text('(frente al parque)'),
+                  const Text('829-940-5937'),
                 ],
               ),
             ),
-            SizedBox(height: 10),
-            Text('Fecha: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(widget.sale.date))}'),
-            Text('Factura: #${widget.sale.id.toString().padLeft(5, '0')}'),
-            Divider(),
+            const SizedBox(height: 10),
             Text(
-              'Cliente: ${_client != null ? "${_client!.name} ${_client!.lastName}" : "Desconocido"}',
+              'Fecha: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(widget.sale.date))}',
             ),
-            Text('Tel: ${_client?.phone ?? "Sin teléfono"}'),
-            Divider(),
-            // Encabezados de productos con espacio fijo para alineación
-            Text('Producto        Cant.   Subtotal'),
-            Divider(),
+            Text('Factura: #${widget.sale.id.toString().padLeft(5, '0')}'),
+            if (_isVoided && _voidedAt != null)
+              Text(
+                'Anulada: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(_voidedAt!))}',
+                style: const TextStyle(color: Colors.red),
+              ),
+            const Divider(),
+            Text('Cliente: $clientName'),
+            Text('Tel: $clientPhone'),
+            const Divider(),
+            const Text('Producto        Cant.   Subtotal'),
+            const Divider(),
+
             // Lista de productos
             ..._items.map((item) {
               final product = _productMap[item.productId];
-              final nombre = (product?.name.length ?? 0) > 18
-                  ? '${product!.name.substring(0, 18)}…'
-                  : product?.name ?? 'Producto';
+              final nameRaw = product?.name ?? 'Producto';
+              final nombre = nameRaw.length > 18 ? '${nameRaw.substring(0, 18)}…' : nameRaw;
+
               final subtotal = item.subtotal.toStringAsFixed(2);
               final desc = item.discount > 0
                   ? ' (Desc. \$${item.discount.toStringAsFixed(2)})'
                   : '';
               final rentable = (product?.isRentable ?? false) ? ' 🛠' : '';
-              return Text(
-                '$nombre x${item.quantity}  \$${subtotal}$desc$rentable',
-              );
+
+              return Text('$nombre x${item.quantity}  \$${subtotal}$desc$rentable');
             }),
-            Divider(),
-            // Información de descuentos y total
+
+            const Divider(),
             if (totalDiscount > 0)
               Text('Descuento total: \$${totalDiscount.toStringAsFixed(2)}'),
             Text('Total: \$${widget.sale.total.toStringAsFixed(2)}'),
             Text(widget.sale.isCredit ? 'Tipo: Crédito' : 'Tipo: Contado'),
-            
-            // Información de estado de pago para ventas a crédito
-            // Busca la línea 127 del archivo sale_detail_screen.dart
-// El error más probable es que haya una coma extra o una lista mal formada
 
-// Revisa la sección donde describes información de crédito, específicamente esta parte:
-// Probablemente está en la función _buildReceiptWidget()
+            // Estado crédito (si aplica)
+            if (widget.sale.isCredit) ...[
+              const Divider(),
+              if (widget.sale.amountDue == 0)
+                const Text(
+                  '✅ FACTURA PAGADA',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '🔴 PENDIENTE DE PAGO',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      'Pagado: \$${(widget.sale.total - widget.sale.amountDue).toStringAsFixed(2)}',
+                    ),
+                    Text('Pendiente: \$${widget.sale.amountDue.toStringAsFixed(2)}'),
+                  ],
+                ),
+            ],
 
-// La versión corregida podría ser así:
-if (widget.sale.isCredit) ...[
-  Divider(),
-  if (widget.sale.amountDue == 0)
-    Text('✅ FACTURA PAGADA', style: TextStyle(fontWeight: FontWeight.bold))
-  else 
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('🔴 PENDIENTE DE PAGO', style: TextStyle(fontWeight: FontWeight.bold)),
-        Text('Pagado: \$${(widget.sale.total - widget.sale.amountDue).toStringAsFixed(2)}'),
-        Text('Pendiente: \$${widget.sale.amountDue.toStringAsFixed(2)}'),
-      ],
-    ),
-],
-
-// Asegúrate de que los corchetes estén correctamente balanceados
-// El error podría estar en una coma extra después del último elemento de una lista
-// O podría faltar una coma entre elementos
-            
-            Divider(),
-            Center(child: Text('Gracias por preferirnos')),
-            SizedBox(height: 20), // Espacio adicional para impresión
+            const Divider(),
+            const Center(child: Text('Gracias por preferirnos')),
+            const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
-  
-  // Muestra la vista previa del recibo
+
+  // ✅ Muestra la vista previa del recibo
   void _showReceiptPreview() {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text('Vista Previa de Factura'),
+        title: const Text('Vista Previa de Factura'),
         content: SingleChildScrollView(
           child: RepaintBoundary(
             key: _receiptKey,
@@ -170,18 +192,18 @@ if (widget.sale.isCredit) ...[
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cerrar'),
+            child: const Text('Cerrar'),
           ),
           ElevatedButton(
             onPressed: _printReceipt,
-            child: Text('Imprimir'),
+            child: const Text('Imprimir'),
           ),
         ],
       ),
     );
   }
-  
-  // Función para imprimir el recibo usando PrinterHelper
+
+  // ✅ Función para imprimir el recibo usando PrinterHelper
   Future<void> _printReceipt() async {
     try {
       // Mostrar indicador de progreso
@@ -191,7 +213,7 @@ if (widget.sale.isCredit) ...[
         builder: (BuildContext dialogContext) {
           return AlertDialog(
             content: Row(
-              children: [
+              children: const [
                 CircularProgressIndicator(),
                 SizedBox(width: 20),
                 Text("Imprimiendo factura..."),
@@ -200,90 +222,130 @@ if (widget.sale.isCredit) ...[
           );
         },
       );
-      
+
       // Verificar conexión a la impresora
       final connected = await PrinterHelper.connectToPrinter();
       if (!connected) {
-        Navigator.pop(context); // Cerrar diálogo de progreso
+        Navigator.pop(context); // cerrar diálogo de progreso
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo conectar a la impresora')),
+          const SnackBar(content: Text('No se pudo conectar a la impresora')),
         );
         return;
       }
-      
-      // Usar impresión de texto directa (más confiable)
+
       await _printReceiptAsText();
-      
-      // Cerrar diálogo de progreso
-      Navigator.pop(context);
-      
-      // Cerrar diálogo de previsualización
-      Navigator.pop(context);
-      
-      // Mostrar mensaje de éxito
+
+      Navigator.pop(context); // cerrar diálogo de progreso
+      Navigator.pop(context); // cerrar preview
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Factura reimpresa correctamente')),
+        const SnackBar(content: Text('Factura reimpresa correctamente')),
       );
     } catch (e) {
-      // Cerrar diálogo de progreso si hay error
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
       }
-      print('❌ Error al reimprimir factura: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al reimprimir la factura: $e')),
       );
     }
   }
 
-  // Impresión como texto (más confiable para impresoras térmicas)
+  // ✅ Impresión como texto (más confiable para impresoras térmicas)
   Future<void> _printReceiptAsText() async {
-    try {
-      final totalDiscount = _calculateTotalDiscount();
-      final totalPaid = widget.sale.total - widget.sale.amountDue;
-      
-      // Preparar los items para la impresión
-      final List<Map<String, dynamic>> items = _items.map((item) {
-        final product = _productMap[item.productId];
-        return {
-          'name': product?.name ?? 'Producto',
-          'quantity': item.quantity,
-          'price': item.subtotal / item.quantity,
-          'discount': item.discount,
-          'subtotal': item.subtotal,
-        };
-      }).toList();
-      
-      // Texto para el estado de pago
-      String estadoCredito = "";
-      if (widget.sale.isCredit) {
-        if (widget.sale.amountDue == 0) {
-          estadoCredito = "FACTURA PAGADA";
-        } else {
-          estadoCredito = "PENDIENTE: \$${widget.sale.amountDue.toStringAsFixed(2)}";
-        }
+    final totalDiscount = _calculateTotalDiscount();
+    final totalPaid = widget.sale.total - widget.sale.amountDue;
+
+    final List<Map<String, dynamic>> items = _items.map((item) {
+      final product = _productMap[item.productId];
+      return {
+        'name': product?.name ?? 'Producto',
+        'quantity': item.quantity,
+        'price': item.subtotal / item.quantity,
+        'discount': item.discount,
+        'subtotal': item.subtotal,
+      };
+    }).toList();
+
+    String estadoCredito = "";
+    if (_isVoided) {
+      estadoCredito = "FACTURA ANULADA";
+    } else if (widget.sale.isCredit) {
+      if (widget.sale.amountDue == 0) {
+        estadoCredito = "FACTURA PAGADA";
+      } else {
+        estadoCredito = "PENDIENTE: \$${widget.sale.amountDue.toStringAsFixed(2)}";
       }
-      
-      // Imprimir el recibo como texto
-      await PrinterHelper.printInvoiceText(
-        businessName: 'DECOYAMIX',
-        address: 'calle Atilio Pérez, Cutupú, La Vega',
-        phone: '829-940-5937',
-        invoiceNumber: widget.sale.id?.toString().padLeft(5, '0') ?? "-----",
-        date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(widget.sale.date)),
-        clientName: _client != null ? '${_client!.name} ${_client!.lastName}' : 'Desconocido',
-        clientPhone: _client?.phone ?? 'Sin teléfono',
-        items: items,
-        totalDiscount: totalDiscount,
-        total: widget.sale.total,
-        isCredit: widget.sale.isCredit,
-        // Pasar parámetros adicionales para mostrar en la reimpresión
-        isReprint: true,
-        creditStatus: estadoCredito,
-        amountPaid: totalPaid,
+    }
+
+    await PrinterHelper.printInvoiceText(
+      businessName: 'DECOYAMIX',
+      address: 'calle Atilio Pérez, Cutupú, La Vega',
+      phone: '829-940-5937',
+      invoiceNumber: widget.sale.id?.toString().padLeft(5, '0') ?? "-----",
+      date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(widget.sale.date)),
+      clientName: _client != null ? '${_client!.name} ${_client!.lastName}' : 'Desconocido',
+      clientPhone: _client?.phone ?? 'Sin teléfono',
+      items: items,
+      totalDiscount: totalDiscount,
+      total: widget.sale.total,
+      isCredit: widget.sale.isCredit,
+
+      // Reimpresión
+      isReprint: true,
+      creditStatus: estadoCredito,
+      amountPaid: totalPaid,
+    );
+  }
+
+  Future<void> _confirmVoidSale() async {
+    if (_isVoided) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Eliminar factura"),
+        content: const Text(
+          "Esto ANULARÁ la factura, devolverá los productos al inventario y la sacará de los reportes.\n\n¿Seguro que deseas continuar?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("Eliminar"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await DBHelper.voidSaleAndRestock(widget.sale.id!);
+
+      // marcar localmente como anulada (auditoría)
+      setState(() {
+        _isVoided = true;
+        _voidedAt = DateTime.now().toIso8601String();
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("✅ Factura anulada correctamente")),
       );
+
+      // vuelve al historial y le avisa que hubo cambio
+      Navigator.pop(context, true);
     } catch (e) {
-      throw Exception('Error al imprimir como texto: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("❌ Error al anular factura: $e")),
+      );
     }
   }
 
@@ -298,24 +360,61 @@ if (widget.sale.isCredit) ...[
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_isVoided) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.red),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "FACTURA ANULADA",
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (_voidedAt != null)
+                      Text(
+                        "Anulada: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(_voidedAt!))}",
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
             // Información del cliente
             if (_client != null) ...[
               Text('Cliente: ${_client!.name} ${_client!.lastName}'),
               Text('Teléfono: ${_client!.phone}'),
+            ] else ...[
+              const Text('Cliente: Desconocido'),
             ],
+
             // Información de la venta
-            Text('Fecha: ${DateFormat('yyyy-MM-dd').format(DateTime.parse(widget.sale.date))}'),
+            Text(
+              'Fecha: ${DateFormat('yyyy-MM-dd').format(DateTime.parse(widget.sale.date))}',
+            ),
             Text(
               'Tipo de venta: ${widget.sale.isCredit ? "Crédito" : "Contado"}',
             ),
-            
-            // Información de estado de pago para ventas a crédito
+
+            // Estado de pago para ventas a crédito
             if (widget.sale.isCredit) ...[
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Container(
-                padding: EdgeInsets.all(8),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: widget.sale.amountDue == 0 ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
+                  color: widget.sale.amountDue == 0
+                      ? Colors.green.withOpacity(0.2)
+                      : Colors.red.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
@@ -327,7 +426,8 @@ if (widget.sale.isCredit) ...[
                           : '❗ Pendiente de pago',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: widget.sale.amountDue == 0 ? Colors.green : Colors.red,
+                        color:
+                            widget.sale.amountDue == 0 ? Colors.green : Colors.red,
                       ),
                     ),
                     Text(
@@ -338,18 +438,18 @@ if (widget.sale.isCredit) ...[
                 ),
               ),
             ],
-            
+
             const SizedBox(height: 16),
             const Text(
               'Productos:',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            
+
             // Lista de productos
             Expanded(
               child: ListView.separated(
                 itemCount: _items.length,
-                separatorBuilder: (_, __) => Divider(),
+                separatorBuilder: (_, __) => const Divider(),
                 itemBuilder: (_, index) {
                   final item = _items[index];
                   final product = _productMap[item.productId];
@@ -362,7 +462,7 @@ if (widget.sale.isCredit) ...[
                         if (item.discount > 0)
                           Text(
                             'Descuento: \$${item.discount.toStringAsFixed(2)} por unidad',
-                            style: TextStyle(color: Colors.red),
+                            style: const TextStyle(color: Colors.red),
                           ),
                       ],
                     ),
@@ -371,33 +471,51 @@ if (widget.sale.isCredit) ...[
                 },
               ),
             ),
-            
-            Divider(),
-            
-            // Información de totales
+
+            const Divider(),
+
+            // Totales
             if (totalDiscount > 0)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Text(
                   'Descuento total: \$${totalDiscount.toStringAsFixed(2)}',
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.only(bottom: 16, top: 8),
+              padding: const EdgeInsets.only(bottom: 10, top: 8),
               child: Text(
                 'Total final: \$${widget.sale.total.toStringAsFixed(2)}',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
-            
-            // Botón de reimpresión
-            Center(
-              child: ElevatedButton.icon(
-                onPressed: _showReceiptPreview,
-                icon: Icon(Icons.print),
-                label: Text('Reimprimir factura'),
-              ),
+
+            // Botones (Reimprimir + Eliminar)
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _showReceiptPreview,
+                    icon: const Icon(Icons.print),
+                    label: const Text('Reimprimir'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isVoided ? null : _confirmVoidSale,
+                    icon: const Icon(Icons.delete),
+                    label: const Text('Eliminar'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey,
+                      disabledForegroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

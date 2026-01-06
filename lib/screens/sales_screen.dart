@@ -309,8 +309,10 @@ class _SalesScreenState extends State<SalesScreen> {
                 return ListTile(
                   title: Text(product.name),
                   subtitle: Text(
-                    '\$${product.price.toStringAsFixed(2)} - Código: ${product.barcode}',
-                  ),
+  '\$${product.price.toStringAsFixed(2)} - Código: ${product.barcode}\n'
+  'Stock: ${(product.isRentable == true) ? "∞" : (product.quantity ?? 0)}'
+),
+
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

@@ -522,11 +522,12 @@ class _ReportScreenState extends State<ReportScreen> {
     double totalGanancia = 0;
 
     for (var row in data) {
-      totalCantidad += row['total_quantity'] as int;
-      totalDescuento += row['total_discount'] as double;
-      totalVentas += row['total_sales'] as double;
-      totalGanancia += row['total_gain'] as double;
-    }
+  totalCantidad += (row['total_quantity'] as num?)?.toInt() ?? 0;
+  totalDescuento += (row['total_discount'] as num?)?.toDouble() ?? 0.0;
+  totalVentas += (row['total_sales'] as num?)?.toDouble() ?? 0.0;
+  totalGanancia += (row['total_gain'] as num?)?.toDouble() ?? 0.0;
+}
+
 
     // Guardar datos para impresión
     _lastReportTitle = 'Productos Vendidos - $negocioSeleccionado';
@@ -557,11 +558,13 @@ class _ReportScreenState extends State<ReportScreen> {
                     (row) => ListTile(
                       title: Text(row['product_name']),
                       subtitle: Text(
-                        'Cantidad: ${row['total_quantity']} - Descuento: \$${(row['total_discount'] as double).toStringAsFixed(2)}',
-                      ),
-                      trailing: Text(
-                        '\$${(row['total_sales'] as double).toStringAsFixed(2)}',
-                      ),
+  'Cantidad: ${(row['total_quantity'] as num?)?.toInt() ?? 0} - '
+  'Descuento: \$${((row['total_discount'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}',
+),
+trailing: Text(
+  '\$${((row['total_sales'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}',
+),
+
                     ),
                   ),
                   const Divider(),
@@ -591,74 +594,85 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Future<void> _generateFacturacionReport() async {
-    final sales = await DBHelper.getAllSales();
-    final filtered =
-        sales.where((s) {
-          final saleDate = DateTime.parse(s.date);
-          return saleDate.isAfter(
-                _startDate!.subtract(const Duration(days: 1)),
-              ) &&
-              saleDate.isBefore(_endDate!.add(const Duration(days: 1)));
-        }).toList();
+ Future<void> _generateFacturacionReport() async {
+  final sales = await DBHelper.getAllSales();
 
-    double credit = 0;
-    double cash = 0;
-    double profit = 0;
-    double payments = 0;
-    double discounts = 0;
+  // ✅ Filtrar por rango + excluir anuladas
+  final filtered = sales.where((s) {
+    final saleDate = DateTime.parse(s.date);
 
-    for (var s in filtered) {
-      final items = await DBHelper.getSaleItems(s.id!);
+    final inRange =
+        saleDate.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
+        saleDate.isBefore(_endDate!.add(const Duration(days: 1)));
 
-      double discountAmount = 0;
-      for (var item in items) {
-        discountAmount += item.discount * item.quantity;
-      }
+    // ✅ clave: NO incluir anuladas en el reporte
+    final notVoided = !s.isVoided;
 
-      if (s.isCredit) {
-        credit += s.total;
-        final paid = s.total - s.amountDue;
-        payments += paid;
-      } else {
-        cash += s.total;
-      }
+    return inRange && notVoided;
+  }).toList();
 
-      for (var item in items) {
-        final product = await DBHelper.getProductById(item.productId);
-        final cost = product?.cost ?? 0;
-        final gain = ((item.subtotal / item.quantity) - cost) * item.quantity;
-        profit += gain;
-      }
+  double credit = 0.0;
+  double cash = 0.0;
+  double profit = 0.0;
+  double payments = 0.0;
+  double discounts = 0.0;
 
-      s.discount = discountAmount;
-      discounts += discountAmount;
+  for (var s in filtered) {
+    final items = await DBHelper.getSaleItems(s.id!);
+
+    double discountAmount = 0.0;
+    for (var item in items) {
+      discountAmount += (item.discount * item.quantity);
     }
 
-    setState(() {
-      _filteredSales = filtered;
-      creditTotal = credit;
-      cashTotal = cash;
-      creditPaymentsTotal = payments;
-      profitTotal = profit;
-      totalDiscounts = discounts;
-    });
+    if (s.isCredit) {
+      credit += s.total;
+      final paid = s.total - s.amountDue;
+      payments += paid;
+    } else {
+      cash += s.total;
+    }
 
-    // Guardar datos para impresión
-    _lastReportTitle = 'Reporte de Facturación';
-    _lastReportData = {
-      'sales': _filteredSales,
-      'creditTotal': creditTotal,
-      'cashTotal': cashTotal,
-      'creditPaymentsTotal': creditPaymentsTotal,
-      'profitTotal': profitTotal,
-      'totalDiscounts': totalDiscounts,
-      'startDate': _startDate,
-      'endDate': _endDate,
-    };
+    for (var item in items) {
+      final product = await DBHelper.getProductById(item.productId);
+      final cost = product?.cost ?? 0.0;
 
-    _showSalesPreview();
+      final qty = item.quantity;
+      if (qty <= 0) continue;
+
+      final gain = ((item.subtotal / qty) - cost) * qty;
+      profit += gain;
+    }
+
+    s.discount = discountAmount;
+    discounts += discountAmount;
   }
+
+  setState(() {
+    _filteredSales = filtered;
+    creditTotal = credit;
+    cashTotal = cash;
+    creditPaymentsTotal = payments;
+    profitTotal = profit;
+    totalDiscounts = discounts;
+  });
+
+  // Guardar datos para impresión
+  _lastReportTitle = 'Reporte de Facturación';
+  _lastReportData = {
+    'sales': _filteredSales,
+    'creditTotal': creditTotal,
+    'cashTotal': cashTotal,
+    'creditPaymentsTotal': creditPaymentsTotal,
+    'profitTotal': profitTotal,
+    'totalDiscounts': totalDiscounts,
+    'startDate': _startDate,
+    'endDate': _endDate,
+  };
+
+  _showSalesPreview();
+}
+
   Future<void> _generateGastosReport() async {
     final gastos = await DBHelper.getExpenseHistory(_startDate!, _endDate!);
 
@@ -722,94 +736,115 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Future<void> _generateInventarioReport() async {
-    if (_selectedSupplier == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Por favor, selecciona un proveedor')),
-      );
-      return;
-    }
-
-    final entries = await DBHelper.getInventoryEntriesBySupplierAndDate(
-      _selectedSupplier!.id!,
-      _startDate!,
-      _endDate!,
+ Future<void> _generateInventarioReport() async {
+  // ✅ Validaciones (sin duplicar)
+  if (_selectedSupplier == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('⚠️ Selecciona un proveedor')),
     );
-
-    final products = await DBHelper.getProducts();
-    final productMap = {for (var p in products) p.id!: p};
-
-    final totalQty = entries.fold<int>(
-      0,
-      (sum, e) => sum + (e['quantity'] as int),
-    );
-    final totalCost = entries.fold<double>(
-      0.0,
-      (sum, e) => sum + ((e['cost'] as num) * (e['quantity'] as int)),
-    );
-
-    // Guardar datos para impresión
-    _lastReportTitle = 'Reporte de Inventario';
-    _lastReportData = {
-      'supplier': _selectedSupplier,
-      'entries': entries,
-      'products': productMap,
-      'totalQty': totalQty,
-      'totalCost': totalCost,
-      'startDate': _startDate,
-      'endDate': _endDate,
-    };
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-            title: Text(_lastReportTitle),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Proveedor: ${_selectedSupplier!.name}'),
-                  Text(
-                    'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} - ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
-                  ),
-                  Text(
-                    'Generado: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now())}',
-                  ),
-                  const Divider(),
-                  ...entries.map((e) {
-                    final product = productMap[e['product_id']]!;
-                    final quantity = e['quantity'];
-                    final cost = e['cost'];
-                    final total = (cost * quantity).toStringAsFixed(2);
-
-                    return ListTile(
-                      title: Text(product.name),
-                      subtitle: Text(
-                        'Cantidad: $quantity  |  Costo: \$${cost.toStringAsFixed(2)}',
-                      ),
-                      trailing: Text('Total: \$${total}'),
-                    );
-                  }),
-                  const Divider(),
-                  Text('Cantidad Total: $totalQty'),
-                  Text('Costo Total: \$${totalCost.toStringAsFixed(2)}'),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cerrar'),
-              ),
-              ElevatedButton.icon(
-                icon: Icon(Icons.print),
-                label: Text('Imprimir'),
-                onPressed: () => _printLastReport(),
-              ),
-            ],
-          ),
-    );
+    return;
   }
+
+  if (_startDate == null || _endDate == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('⚠️ Selecciona el rango de fechas')),
+    );
+    return;
+  }
+
+  final entries = await DBHelper.getInventoryEntriesBySupplierAndDate(
+    _selectedSupplier!.id!,
+    _startDate!,
+    _endDate!,
+  );
+
+  final products = await DBHelper.getProducts();
+  final productMap = {for (var p in products) p.id!: p};
+
+  final totalQty = entries.fold<int>(
+    0,
+    (sum, e) => sum + ((e['quantity'] as int?) ?? 0),
+  );
+
+  final totalCost = entries.fold<double>(
+    0.0,
+    (sum, e) {
+      final qty = (e['quantity'] as int?) ?? 0;
+      final unitCost = (e['cost'] as num?)?.toDouble() ?? 0.0;
+      return sum + (unitCost * qty);
+    },
+  );
+
+  // Guardar datos para impresión
+  _lastReportTitle = 'Reporte de Inventario';
+  _lastReportData = {
+    'supplier': _selectedSupplier,
+    'entries': entries,
+    'products': productMap,
+    'totalQty': totalQty,
+    'totalCost': totalCost,
+    'startDate': _startDate,
+    'endDate': _endDate,
+  };
+
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: Text(_lastReportTitle),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Proveedor: ${_selectedSupplier!.name}'),
+            Text(
+              'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} - ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
+            ),
+            Text(
+              'Generado: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now())}',
+            ),
+            const Divider(),
+
+            ...entries.map((e) {
+              final productId = e['product_id'] as int?;
+              final product = productId != null ? productMap[productId] : null;
+
+              final quantity = (e['quantity'] as int?) ?? 0;
+              final cost = (e['cost'] as num?)?.toDouble() ?? 0.0;
+              final total = (cost * quantity).toStringAsFixed(2);
+
+              // ✅ Si el producto no existe, no crashear (modo auditoría)
+              final productName = product?.name ?? 'Producto eliminado (#$productId)';
+
+              return ListTile(
+                title: Text(productName),
+                subtitle: Text(
+                  'Cantidad: $quantity  |  Costo: \$${cost.toStringAsFixed(2)}',
+                ),
+                trailing: Text('Total: \$${total}'),
+              );
+            }),
+
+            const Divider(),
+            Text('Cantidad Total: $totalQty'),
+            Text('Costo Total: \$${totalCost.toStringAsFixed(2)}'),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cerrar'),
+        ),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.print),
+          label: const Text('Imprimir'),
+          onPressed: () => _printLastReport(),
+        ),
+      ],
+    ),
+  );
+}
+
 
   Future<void> _generatePagosCreditoReport() async {
     final sales = await DBHelper.getAllSales();
