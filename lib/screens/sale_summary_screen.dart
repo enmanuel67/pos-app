@@ -128,7 +128,7 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
           children: [
             const Text('Factura', style: TextStyle(fontWeight: FontWeight.bold)),
             const Text('DECOYAMIX'),
-            const Text('calle Atilio Pérez, Cutupú, La Vega'),
+            const Text('calle Atilio Pérez, Cutupú,     La Vega'),
             const Text('(frente al parque)'),
             const Text('829-940-5937'),
             const SizedBox(height: 10),
@@ -209,6 +209,17 @@ class _SaleSummaryScreenState extends State<SaleSummaryScreen> {
 // Reemplaza completamente la función existente con esta versión
 
 Future<void> _confirmSale() async {
+
+  final clientPhone = widget.clientPhone?.trim();
+if (widget.isCredit && (clientPhone == null || clientPhone.isEmpty)) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('⚠️ Para una venta a crédito debes seleccionar un cliente primero.'),
+    ),
+  );
+  return;
+}
+
   // Mostrar indicador de progreso
   showDialog(
     context: context,

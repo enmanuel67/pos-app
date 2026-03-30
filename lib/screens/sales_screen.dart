@@ -175,38 +175,59 @@ class _SalesScreenState extends State<SalesScreen> {
     });
   }
 
-  void _selectPaymentMethod() {
-    if (_cart.isEmpty) return;
+void _selectPaymentMethod() {
+  if (_cart.isEmpty) return;
 
-    if (_isScanning) {
-      _toggleScanner();
-    }
+  if (_isScanning) {
+    _toggleScanner();
+  }
 
-    showDialog(
-      context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Tipo de venta'),
-            content: const Text('¿Cómo desea registrar esta venta?'),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _goToSummary(isCredit: false);
-                },
-                child: const Text('Contado'),
-              ),
-              TextButton(
-                onPressed: () {
+  final hasClient =
+      widget.clientPhone != null && widget.clientPhone!.trim().isNotEmpty;
+
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Tipo de venta'),
+      content: Text(
+        hasClient
+            ? '¿Cómo desea registrar esta venta?'
+            : '¿Cómo desea registrar esta venta?\n\n⚠️ Para vender a CRÉDITO debes seleccionar un cliente primero.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _goToSummary(isCredit: false);
+          },
+          child: const Text('Contado'),
+        ),
+
+        // ✅ Crédito SOLO si hay cliente
+        TextButton(
+          onPressed: hasClient
+              ? () {
                   Navigator.pop(context);
                   _goToSummary(isCredit: true);
+                }
+              : () {
+                  // Si quieres, puedes mantenerlo deshabilitado (onPressed: null)
+                  // pero así muestra el mensaje.
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        '⚠️ Selecciona un cliente antes de vender a CRÉDITO.',
+                      ),
+                    ),
+                  );
                 },
-                child: const Text('Crédito'),
-              ),
-            ],
-          ),
-    );
-  }
+          child: const Text('Crédito'),
+        ),
+      ],
+    ),
+  );
+}
+
 
   void _goToSummary({required bool isCredit}) {
     Navigator.push(
