@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pos_app/screens/expenses_screen.dart';
+import 'package:pos_app/screens/error_logs_screen.dart';
 import 'package:pos_app/screens/help_screen.dart';
 import 'package:pos_app/screens/inventory_screen.dart';
 import 'package:pos_app/screens/billing_screen.dart';
@@ -41,6 +42,9 @@ class DashboardScreen extends StatelessWidget {
       }),
       _DashboardItem('Ayuda', Icons.question_mark_rounded, () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => HelpScreen()));
+      }),
+      _DashboardItem('Errores', Icons.bug_report, () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ErrorLogsScreen()));
       }),
       
     ];

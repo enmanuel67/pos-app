@@ -66,6 +66,12 @@ class _EditProductScreenState extends State<EditProductScreen> {
     });
   }
 
+  double? _parseDecimal(String value) {
+    final normalized = value.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    return double.tryParse(normalized);
+  }
+
   /// ✅ Trae la última fecha de ingreso a inventario desde inventory_entries
   Future<void> _loadLastInventoryDate() async {
     try {
@@ -99,12 +105,20 @@ class _EditProductScreenState extends State<EditProductScreen> {
       return;
     }
 
+    final price = _parseDecimal(priceController.text);
+    if (price == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('El precio debe ser un numero valido')),
+      );
+      return;
+    }
+
     final updated = Product(
       id: widget.product.id,
       name: nameController.text.trim(),
       barcode: barcodeController.text.trim(),
       description: descriptionController.text.trim(),
-      price: double.tryParse(priceController.text.trim()) ?? 0.0,
+      price: price,
 
       // 🔒 No se puede editar la cantidad aquí (se mantiene igual)
       quantity: widget.product.quantity,
@@ -167,6 +181,11 @@ class _EditProductScreenState extends State<EditProductScreen> {
                 controller: priceController,
                 decoration: const InputDecoration(labelText: 'Precio de venta'),
                 keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return 'Requerido';
+                  if (_parseDecimal(value) == null) return 'Numero invalido';
+                  return null;
+                },
               ),
 
               TextFormField(

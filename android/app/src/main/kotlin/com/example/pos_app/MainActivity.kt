@@ -1,16 +1,25 @@
 package com.example.pos_app
 
+import android.Manifest
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.content.Intent
 import android.app.Activity
 import android.os.Bundle
+import android.os.Build
+import android.content.pm.PackageManager
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.yourcompany.pos_app/scanner"
     private val SCAN_REQUEST_CODE = 100
+    private val BLUETOOTH_PERMISSION_REQUEST_CODE = 200
     private var scanResult: MethodChannel.Result? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestBluetoothPermissionsIfNeeded()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -74,6 +83,27 @@ class MainActivity: FlutterActivity() {
                 scanResult?.error("CANCELLED", "Escaneo cancelado", null)
             }
             scanResult = null
+        }
+    }
+
+    private fun requestBluetoothPermissionsIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+
+        val requiredPermissions = arrayOf(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        )
+
+        val missingPermissions = requiredPermissions.filter {
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missingPermissions.isNotEmpty()) {
+            requestPermissions(
+                missingPermissions.toTypedArray(),
+                BLUETOOTH_PERMISSION_REQUEST_CODE
+            )
         }
     }
 }

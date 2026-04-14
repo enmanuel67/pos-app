@@ -42,14 +42,30 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     });
   }
 
+  double? _parseDecimal(String value) {
+    final normalized = value.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    return double.tryParse(normalized);
+  }
+
   Future<void> _saveProduct() async {
     if (_formKey.currentState!.validate()) {
+      final price = _parseDecimal(priceController.text);
+      final cost = _parseDecimal(costController.text);
+
+      if (price == null || cost == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Precio y costo deben ser numericos validos')),
+        );
+        return;
+      }
+
       final newProduct = Product(
         name: nameController.text.trim(),
         barcode: barcodeController.text.trim(),
         description: descriptionController.text.trim(),
-        price: double.tryParse(priceController.text.trim()) ?? 0.0,
-        cost: double.tryParse(costController.text.trim()) ?? 0.0,
+        price: price,
+        cost: cost,
         quantity: 0, // Siempre inicia en 0
         supplierId: selectedSupplier?.id ?? 0,
         createdAt: DateTime.now().toIso8601String(),
@@ -92,11 +108,21 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 controller: priceController,
                 decoration: const InputDecoration(labelText: 'Precio de venta'),
                 keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return 'Requerido';
+                  if (_parseDecimal(value) == null) return 'Numero invalido';
+                  return null;
+                },
               ),
               TextFormField(
                 controller: costController,
                 decoration: const InputDecoration(labelText: 'Costo unitario'),
                 keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return 'Requerido';
+                  if (_parseDecimal(value) == null) return 'Numero invalido';
+                  return null;
+                },
               ),
               DropdownButtonFormField<Supplier>(
                 value: selectedSupplier,

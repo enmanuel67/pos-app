@@ -292,6 +292,10 @@ Future<void> reduceProductStock(int productId, int quantity) async {
   if (isRentable) return;
 
   final currentQty = (row['quantity'] as num?)?.toInt() ?? 0;
+  if (quantity <= 0) return;
+  if (currentQty < quantity) {
+    throw Exception('Stock insuficiente para producto ID $productId');
+  }
   final newQty = currentQty - quantity;
 
   await dbClient.update(
@@ -1148,6 +1152,54 @@ static Future<void> voidSaleAndRestock(int saleId) async {
       whereArgs: [saleId],
     );
   });
+}
+
+static Future<void> _ensureInventoryDraftTable() async {
+  final dbClient = await db;
+  await dbClient.execute('''
+    CREATE TABLE IF NOT EXISTS inventory_drafts(
+      draft_key TEXT PRIMARY KEY,
+      payload TEXT,
+      updated_at TEXT
+    );
+  ''');
+}
+
+static Future<void> saveInventoryDraft(String draftKey, String payload) async {
+  await _ensureInventoryDraftTable();
+  final dbClient = await db;
+  await dbClient.insert(
+    'inventory_drafts',
+    {
+      'draft_key': draftKey,
+      'payload': payload,
+      'updated_at': DateTime.now().toIso8601String(),
+    },
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+}
+
+static Future<String?> getInventoryDraft(String draftKey) async {
+  await _ensureInventoryDraftTable();
+  final dbClient = await db;
+  final result = await dbClient.query(
+    'inventory_drafts',
+    where: 'draft_key = ?',
+    whereArgs: [draftKey],
+    limit: 1,
+  );
+  if (result.isEmpty) return null;
+  return result.first['payload'] as String?;
+}
+
+static Future<void> deleteInventoryDraft(String draftKey) async {
+  await _ensureInventoryDraftTable();
+  final dbClient = await db;
+  await dbClient.delete(
+    'inventory_drafts',
+    where: 'draft_key = ?',
+    whereArgs: [draftKey],
+  );
 }
 
 }

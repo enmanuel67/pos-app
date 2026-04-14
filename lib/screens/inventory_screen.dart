@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart'
     hide Barcode; // Ocultar Barcode de mobile_scanner
+import 'dart:convert';
 import '../db/db_helper.dart';
 import 'package:pos_app/models/product.dart';
 import 'create_product_screen.dart';
@@ -20,6 +21,7 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
+  static const String _draftKey = 'inventory_pending_list';
   final TextEditingController _barcodeController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
@@ -34,6 +36,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   List<Map<String, dynamic>> _inventoryList = [];
   bool _isScanning = false;
   bool _isSearchingByName = false;
+  bool _draftLoaded = false;
   MobileScannerController? _scannerController;
   Timer? _debounceTimer;
 
@@ -68,7 +71,80 @@ class _InventoryScreenState extends State<InventoryScreen> {
       setState(() {
         _allProducts = products;
       });
+      await _restoreInventoryDraft();
     }
+  }
+
+  double? _parseDecimal(String value) {
+    final normalized = value.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    return double.tryParse(normalized);
+  }
+
+  Future<void> _saveInventoryDraft() async {
+    final payload = jsonEncode(
+      _inventoryList.map((item) {
+        final product = item['product'] as Product;
+        return {
+          'productId': product.id,
+          'quantity': item['quantity'],
+          'cost': item['cost'],
+          'price': item['price'],
+        };
+      }).toList(),
+    );
+
+    await DBHelper.saveInventoryDraft(_draftKey, payload);
+  }
+
+  Future<void> _restoreInventoryDraft() async {
+    if (_draftLoaded || _allProducts.isEmpty) return;
+
+    final payload = await DBHelper.getInventoryDraft(_draftKey);
+    _draftLoaded = true;
+    if (payload == null || payload.trim().isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is! List) return;
+
+      final restored = <Map<String, dynamic>>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final productId = item['productId'];
+        if (productId is! int) continue;
+
+        Product? product;
+        for (final candidate in _allProducts) {
+          if (candidate.id == productId) {
+            product = candidate;
+            break;
+          }
+        }
+        if (product == null) continue;
+
+        final quantity = (item['quantity'] as num?)?.toInt();
+        final cost = (item['cost'] as num?)?.toDouble();
+        final price = (item['price'] as num?)?.toDouble();
+        if (quantity == null || cost == null || price == null) continue;
+
+        restored.add({
+          'product': product,
+          'quantity': quantity,
+          'cost': cost,
+          'price': price,
+        });
+      }
+
+      if (!mounted || restored.isEmpty) return;
+      setState(() {
+        _inventoryList = restored;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _clearInventoryDraft() async {
+    await DBHelper.deleteInventoryDraft(_draftKey);
   }
 
   void _onSearchTextChanged() {
@@ -162,13 +238,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   void _addToInventoryList() {
-    final qty = int.tryParse(_quantityController.text) ?? 0;
-    final cost = double.tryParse(_costController.text) ?? 0.0;
-    final price = double.tryParse(_priceController.text) ?? 0.0;
+    final qty = int.tryParse(_quantityController.text.trim());
+    final cost = _parseDecimal(_costController.text);
+    final price = _parseDecimal(_priceController.text);
 
-    if (_selectedProduct == null || qty <= 0) {
+    if (_selectedProduct == null ||
+        qty == null ||
+        qty <= 0 ||
+        cost == null ||
+        price == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Complete los datos correctamente')),
+        const SnackBar(
+          content: Text('Cantidad, costo y precio deben ser valores validos'),
+        ),
       );
       return;
     }
@@ -187,6 +269,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
       _priceController.clear();
       _selectedProduct = null;
     });
+
+    _saveInventoryDraft();
   }
 
   Future<void> _confirmInventory() async {
@@ -212,6 +296,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     setState(() {
       _inventoryList.clear();
     });
+    await _clearInventoryDraft();
 
     // Recargar productos después de actualizar
     _loadAllProducts();
@@ -909,6 +994,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 setState(() {
                                   _inventoryList.removeAt(index);
                                 });
+                                _saveInventoryDraft();
                               },
                             ),
                           ],
