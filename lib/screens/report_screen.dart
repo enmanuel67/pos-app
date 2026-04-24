@@ -26,7 +26,7 @@ class _ReportScreenState extends State<ReportScreen> {
   double profitTotal = 0;
   double creditPaymentsTotal = 0;
   double totalDiscounts = 0;
-  
+
   // Variables para almacenar los datos del último reporte generado
   Map<String, dynamic> _lastReportData = {};
   String _lastReportTitle = '';
@@ -43,6 +43,23 @@ class _ReportScreenState extends State<ReportScreen> {
     setState(() {
       _suppliers = result;
     });
+  }
+
+  double _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+  }
+
+  int _asInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  bool _isVoidedSale(dynamic sale) {
+    if (sale is Map) {
+      return _asInt(sale['isVoided']) == 1 || _asInt(sale['is_voided']) == 1;
+    }
+    return false;
   }
 
   Future<void> _selectDate(BuildContext context, bool isStart) async {
@@ -135,50 +152,51 @@ class _ReportScreenState extends State<ReportScreen> {
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(_lastReportTitle),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} a ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
-              ),
-              const Divider(),
-              ...data.map(
-                (row) => ListTile(
-                  title: Text(row['product_name']),
-                  subtitle: Text(
-                    'Veces alquilado: ${row['times_sold']}  |  Descuento total: \$${(row['total_discount'] as double).toStringAsFixed(2)}',
+      builder:
+          (_) => AlertDialog(
+            title: Text(_lastReportTitle),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} a ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
                   ),
-                  trailing: Text(
-                    '\$${(row['total_income'] as double).toStringAsFixed(2)}',
+                  const Divider(),
+                  ...data.map(
+                    (row) => ListTile(
+                      title: Text(row['product_name']),
+                      subtitle: Text(
+                        'Veces alquilado: ${row['times_sold']}  |  Descuento total: \$${(row['total_discount'] as double).toStringAsFixed(2)}',
+                      ),
+                      trailing: Text(
+                        '\$${(row['total_income'] as double).toStringAsFixed(2)}',
+                      ),
+                    ),
                   ),
-                ),
+                  const Divider(),
+                  Text('🔁 Total de artículos alquilados: $totalArticulos'),
+                  Text(
+                    '💸 Total de descuentos: \$${totalDescuento.toStringAsFixed(2)}',
+                  ),
+                  Text(
+                    '💰 Total de ingresos: \$${totalIngreso.toStringAsFixed(2)}',
+                  ),
+                ],
               ),
-              const Divider(),
-              Text('🔁 Total de artículos alquilados: $totalArticulos'),
-              Text(
-                '💸 Total de descuentos: \$${totalDescuento.toStringAsFixed(2)}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cerrar'),
               ),
-              Text(
-                '💰 Total de ingresos: \$${totalIngreso.toStringAsFixed(2)}',
+              ElevatedButton.icon(
+                icon: Icon(Icons.print),
+                label: Text('Imprimir'),
+                onPressed: () => _printLastReport(),
               ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-          ElevatedButton.icon(
-            icon: Icon(Icons.print),
-            label: Text('Imprimir'),
-            onPressed: () => _printLastReport(),
-          ),
-        ],
-      ),
     );
   }
 
@@ -207,7 +225,8 @@ class _ReportScreenState extends State<ReportScreen> {
                     onChanged: (value) {
                       setState(() {
                         filteredClients =
-                            clients.where(
+                            clients
+                                .where(
                                   (c) =>
                                       c.name.toLowerCase().contains(
                                         value.toLowerCase(),
@@ -269,7 +288,8 @@ class _ReportScreenState extends State<ReportScreen> {
     if (facturas.isEmpty) {
       showDialog(
         context: context,
-        builder: (_) => AlertDialog(
+        builder:
+            (_) => AlertDialog(
               title: const Text('Sin resultados'),
               content: const Text(
                 'No se encontraron facturas para este cliente en el rango seleccionado.',
@@ -287,16 +307,23 @@ class _ReportScreenState extends State<ReportScreen> {
 
     int countCredito = 0;
     int countContado = 0;
+    int countAnuladas = 0;
     double totalCredito = 0;
     double totalContado = 0;
     double totalPagado = 0;
     double totalDeuda = 0;
 
     for (var f in facturas) {
-      final total = f['total'] as double;
-      final deuda = f['amountDue'] as double;
+      final total = _asDouble(f['total']);
+      final deuda = _asDouble(f['amountDue']);
       final pagado = total - deuda;
-      final esCredito = f['isCredit'] == 1;
+      final esCredito = _asInt(f['isCredit']) == 1;
+      final esAnulada = _isVoidedSale(f);
+
+      if (esAnulada) {
+        countAnuladas++;
+        continue;
+      }
 
       if (esCredito) {
         countCredito++;
@@ -317,6 +344,7 @@ class _ReportScreenState extends State<ReportScreen> {
       'facturas': facturas,
       'countCredito': countCredito,
       'countContado': countContado,
+      'countAnuladas': countAnuladas,
       'totalCredito': totalCredito,
       'totalContado': totalContado,
       'totalPagado': totalPagado,
@@ -326,7 +354,8 @@ class _ReportScreenState extends State<ReportScreen> {
     };
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder:
+          (_) => AlertDialog(
             title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
@@ -339,14 +368,24 @@ class _ReportScreenState extends State<ReportScreen> {
                   ),
                   const Divider(),
                   ...facturas.map((f) {
-                    final total = f['total'] as double;
-                    final deuda = f['amountDue'] as double;
+                    final total = _asDouble(f['total']);
+                    final deuda = _asDouble(f['amountDue']);
                     final pagado = total - deuda;
-                    final isCredito = f['isCredit'] == 1;
+                    final isCredito = _asInt(f['isCredit']) == 1;
+                    final isAnulada = _isVoidedSale(f);
                     final estado =
-                        isCredito
-                            ? (deuda == 0 ? 'PAGADA ✅' : 'PENDIENTE ❗')
+                        isAnulada
+                            ? 'ANULADA'
+                            : isCredito
+                            ? (deuda == 0 ? 'PAGADA' : 'PENDIENTE')
                             : '';
+                    final tipo =
+                        isAnulada
+                            ? 'ANULADA (${isCredito ? 'Crédito' : 'Contado'})'
+                            : isCredito
+                            ? 'Crédito ($estado)'
+                            : 'Contado';
+                    final voidedAt = f['voidedAt']?.toString();
 
                     return ListTile(
                       title: Text('Factura #${f['id']}'),
@@ -356,10 +395,14 @@ class _ReportScreenState extends State<ReportScreen> {
                           Text(
                             'Fecha: ${DateFormat('yyyy-MM-dd').format(DateTime.parse(f['date']))}',
                           ),
-                          Text(
-                            'Tipo: ${isCredito ? 'Crédito ($estado)' : 'Contado'}',
-                          ),
-                          if (isCredito)
+                          Text('Tipo: $tipo'),
+                          if (isAnulada &&
+                              voidedAt != null &&
+                              voidedAt.isNotEmpty)
+                            Text(
+                              'Anulada: ${DateFormat('yyyy-MM-dd').format(DateTime.parse(voidedAt))}',
+                            ),
+                          if (isCredito && !isAnulada)
                             Text('Pagado: \$${pagado.toStringAsFixed(2)}'),
                         ],
                       ),
@@ -369,6 +412,7 @@ class _ReportScreenState extends State<ReportScreen> {
                   const Divider(),
                   Text('Cantidad de Facturas a Crédito: $countCredito'),
                   Text('Cantidad de Facturas al Contado: $countContado'),
+                  Text('Facturas anuladas: $countAnuladas'),
                   Text(
                     'Total Facturado a Crédito: \$${totalCredito.toStringAsFixed(2)}',
                   ),
@@ -379,6 +423,8 @@ class _ReportScreenState extends State<ReportScreen> {
                     'Total Pagado (Crédito): \$${totalPagado.toStringAsFixed(2)}',
                   ),
                   Text('Total Adeudado: \$${totalDeuda.toStringAsFixed(2)}'),
+                  if (countAnuladas > 0)
+                    const Text('Los totales no incluyen facturas anuladas.'),
                 ],
               ),
             ),
@@ -417,7 +463,8 @@ class _ReportScreenState extends State<ReportScreen> {
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder:
+          (_) => AlertDialog(
             title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
@@ -522,12 +569,11 @@ class _ReportScreenState extends State<ReportScreen> {
     double totalGanancia = 0;
 
     for (var row in data) {
-  totalCantidad += (row['total_quantity'] as num?)?.toInt() ?? 0;
-  totalDescuento += (row['total_discount'] as num?)?.toDouble() ?? 0.0;
-  totalVentas += (row['total_sales'] as num?)?.toDouble() ?? 0.0;
-  totalGanancia += (row['total_gain'] as num?)?.toDouble() ?? 0.0;
-}
-
+      totalCantidad += (row['total_quantity'] as num?)?.toInt() ?? 0;
+      totalDescuento += (row['total_discount'] as num?)?.toDouble() ?? 0.0;
+      totalVentas += (row['total_sales'] as num?)?.toDouble() ?? 0.0;
+      totalGanancia += (row['total_gain'] as num?)?.toDouble() ?? 0.0;
+    }
 
     // Guardar datos para impresión
     _lastReportTitle = 'Productos Vendidos - $negocioSeleccionado';
@@ -544,7 +590,8 @@ class _ReportScreenState extends State<ReportScreen> {
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder:
+          (_) => AlertDialog(
             title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
@@ -558,13 +605,12 @@ class _ReportScreenState extends State<ReportScreen> {
                     (row) => ListTile(
                       title: Text(row['product_name']),
                       subtitle: Text(
-  'Cantidad: ${(row['total_quantity'] as num?)?.toInt() ?? 0} - '
-  'Descuento: \$${((row['total_discount'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}',
-),
-trailing: Text(
-  '\$${((row['total_sales'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}',
-),
-
+                        'Cantidad: ${(row['total_quantity'] as num?)?.toInt() ?? 0} - '
+                        'Descuento: \$${((row['total_discount'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}',
+                      ),
+                      trailing: Text(
+                        '\$${((row['total_sales'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}',
+                      ),
                     ),
                   ),
                   const Divider(),
@@ -594,84 +640,94 @@ trailing: Text(
     );
   }
 
- Future<void> _generateFacturacionReport() async {
-  final sales = await DBHelper.getAllSales();
+  Future<void> _generateFacturacionReport() async {
+    final sales = await DBHelper.getAllSales();
 
-  // ✅ Filtrar por rango + excluir anuladas
-  final filtered = sales.where((s) {
-    final saleDate = DateTime.parse(s.date);
+    // ✅ Filtrar por rango + excluir anuladas
+    final start = DateTime(
+      _startDate!.year,
+      _startDate!.month,
+      _startDate!.day,
+    );
+    final endExclusive = DateTime(
+      _endDate!.year,
+      _endDate!.month,
+      _endDate!.day,
+    ).add(const Duration(days: 1));
+    final filtered =
+        sales.where((s) {
+          final saleDate = DateTime.parse(s.date);
 
-    final inRange =
-        saleDate.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
-        saleDate.isBefore(_endDate!.add(const Duration(days: 1)));
+          final inRange =
+              !saleDate.isBefore(start) && saleDate.isBefore(endExclusive);
 
-    // ✅ clave: NO incluir anuladas en el reporte
-    final notVoided = !s.isVoided;
+          // ✅ clave: NO incluir anuladas en el reporte
+          final notVoided = !s.isVoided;
 
-    return inRange && notVoided;
-  }).toList();
+          return inRange && notVoided;
+        }).toList();
 
-  double credit = 0.0;
-  double cash = 0.0;
-  double profit = 0.0;
-  double payments = 0.0;
-  double discounts = 0.0;
+    double credit = 0.0;
+    double cash = 0.0;
+    double profit = 0.0;
+    double payments = 0.0;
+    double discounts = 0.0;
 
-  for (var s in filtered) {
-    final items = await DBHelper.getSaleItems(s.id!);
+    for (var s in filtered) {
+      final items = await DBHelper.getSaleItems(s.id!);
 
-    double discountAmount = 0.0;
-    for (var item in items) {
-      discountAmount += (item.discount * item.quantity);
+      double discountAmount = 0.0;
+      for (var item in items) {
+        discountAmount += (item.discount * item.quantity);
+      }
+
+      if (s.isCredit) {
+        credit += s.total;
+        final paid = s.total - s.amountDue;
+        payments += paid;
+      } else {
+        cash += s.total;
+      }
+
+      for (var item in items) {
+        final product = await DBHelper.getProductById(item.productId);
+        final cost = product?.cost ?? 0.0;
+
+        final qty = item.quantity;
+        if (qty <= 0) continue;
+
+        final gain = ((item.subtotal / qty) - cost) * qty;
+        profit += gain;
+      }
+
+      s.discount = discountAmount;
+      discounts += discountAmount;
     }
 
-    if (s.isCredit) {
-      credit += s.total;
-      final paid = s.total - s.amountDue;
-      payments += paid;
-    } else {
-      cash += s.total;
-    }
+    setState(() {
+      _filteredSales = filtered;
+      creditTotal = credit;
+      cashTotal = cash;
+      creditPaymentsTotal = payments;
+      profitTotal = profit;
+      totalDiscounts = discounts;
+    });
 
-    for (var item in items) {
-      final product = await DBHelper.getProductById(item.productId);
-      final cost = product?.cost ?? 0.0;
+    // Guardar datos para impresión
+    _lastReportTitle = 'Reporte de Facturación';
+    _lastReportData = {
+      'sales': _filteredSales,
+      'creditTotal': creditTotal,
+      'cashTotal': cashTotal,
+      'creditPaymentsTotal': creditPaymentsTotal,
+      'profitTotal': profitTotal,
+      'totalDiscounts': totalDiscounts,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
 
-      final qty = item.quantity;
-      if (qty <= 0) continue;
-
-      final gain = ((item.subtotal / qty) - cost) * qty;
-      profit += gain;
-    }
-
-    s.discount = discountAmount;
-    discounts += discountAmount;
+    _showSalesPreview();
   }
-
-  setState(() {
-    _filteredSales = filtered;
-    creditTotal = credit;
-    cashTotal = cash;
-    creditPaymentsTotal = payments;
-    profitTotal = profit;
-    totalDiscounts = discounts;
-  });
-
-  // Guardar datos para impresión
-  _lastReportTitle = 'Reporte de Facturación';
-  _lastReportData = {
-    'sales': _filteredSales,
-    'creditTotal': creditTotal,
-    'cashTotal': cashTotal,
-    'creditPaymentsTotal': creditPaymentsTotal,
-    'profitTotal': profitTotal,
-    'totalDiscounts': totalDiscounts,
-    'startDate': _startDate,
-    'endDate': _endDate,
-  };
-
-  _showSalesPreview();
-}
 
   Future<void> _generateGastosReport() async {
     final gastos = await DBHelper.getExpenseHistory(_startDate!, _endDate!);
@@ -692,7 +748,8 @@ trailing: Text(
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder:
+          (_) => AlertDialog(
             title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
@@ -736,143 +793,140 @@ trailing: Text(
     );
   }
 
- Future<void> _generateInventarioReport() async {
-  // ✅ Validaciones (sin duplicar)
-  if (_selectedSupplier == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('⚠️ Selecciona un proveedor')),
+  Future<void> _generateInventarioReport() async {
+    // ✅ Validaciones (sin duplicar)
+    if (_selectedSupplier == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ Selecciona un proveedor')),
+      );
+      return;
+    }
+
+    if (_startDate == null || _endDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ Selecciona el rango de fechas')),
+      );
+      return;
+    }
+
+    final entries = await DBHelper.getInventoryEntriesBySupplierAndDate(
+      _selectedSupplier!.id!,
+      _startDate!,
+      _endDate!,
     );
-    return;
-  }
 
-  if (_startDate == null || _endDate == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('⚠️ Selecciona el rango de fechas')),
+    final products = await DBHelper.getProducts();
+    final productMap = {for (var p in products) p.id!: p};
+
+    final totalQty = entries.fold<int>(
+      0,
+      (sum, e) => sum + ((e['quantity'] as int?) ?? 0),
     );
-    return;
-  }
 
-  final entries = await DBHelper.getInventoryEntriesBySupplierAndDate(
-    _selectedSupplier!.id!,
-    _startDate!,
-    _endDate!,
-  );
-
-  final products = await DBHelper.getProducts();
-  final productMap = {for (var p in products) p.id!: p};
-
-  final totalQty = entries.fold<int>(
-    0,
-    (sum, e) => sum + ((e['quantity'] as int?) ?? 0),
-  );
-
-  final totalCost = entries.fold<double>(
-    0.0,
-    (sum, e) {
+    final totalCost = entries.fold<double>(0.0, (sum, e) {
       final qty = (e['quantity'] as int?) ?? 0;
       final unitCost = (e['cost'] as num?)?.toDouble() ?? 0.0;
       return sum + (unitCost * qty);
-    },
-  );
+    });
 
-  // Guardar datos para impresión
-  _lastReportTitle = 'Reporte de Inventario';
-  _lastReportData = {
-    'supplier': _selectedSupplier,
-    'entries': entries,
-    'products': productMap,
-    'totalQty': totalQty,
-    'totalCost': totalCost,
-    'startDate': _startDate,
-    'endDate': _endDate,
-  };
+    // Guardar datos para impresión
+    _lastReportTitle = 'Reporte de Inventario';
+    _lastReportData = {
+      'supplier': _selectedSupplier,
+      'entries': entries,
+      'products': productMap,
+      'totalQty': totalQty,
+      'totalCost': totalCost,
+      'startDate': _startDate,
+      'endDate': _endDate,
+    };
 
-  showDialog(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: Text(_lastReportTitle),
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Proveedor: ${_selectedSupplier!.name}'),
-            Text(
-              'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} - ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
+    showDialog(
+      context: context,
+      builder:
+          (_) => AlertDialog(
+            title: Text(_lastReportTitle),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Proveedor: ${_selectedSupplier!.name}'),
+                  Text(
+                    'Rango: ${DateFormat('yyyy-MM-dd').format(_startDate!)} - ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
+                  ),
+                  Text(
+                    'Generado: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now())}',
+                  ),
+                  const Divider(),
+
+                  ...entries.map((e) {
+                    final productId = e['product_id'] as int?;
+                    final product =
+                        productId != null ? productMap[productId] : null;
+
+                    final quantity = (e['quantity'] as int?) ?? 0;
+                    final cost = (e['cost'] as num?)?.toDouble() ?? 0.0;
+                    final total = (cost * quantity).toStringAsFixed(2);
+
+                    // ✅ Si el producto no existe, no crashear (modo auditoría)
+                    final productName =
+                        product?.name ?? 'Producto eliminado (#$productId)';
+
+                    return ListTile(
+                      title: Text(productName),
+                      subtitle: Text(
+                        'Cantidad: $quantity  |  Costo: \$${cost.toStringAsFixed(2)}',
+                      ),
+                      trailing: Text('Total: \$${total}'),
+                    );
+                  }),
+
+                  const Divider(),
+                  Text('Cantidad Total: $totalQty'),
+                  Text('Costo Total: \$${totalCost.toStringAsFixed(2)}'),
+                ],
+              ),
             ),
-            Text(
-              'Generado: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now())}',
-            ),
-            const Divider(),
-
-            ...entries.map((e) {
-              final productId = e['product_id'] as int?;
-              final product = productId != null ? productMap[productId] : null;
-
-              final quantity = (e['quantity'] as int?) ?? 0;
-              final cost = (e['cost'] as num?)?.toDouble() ?? 0.0;
-              final total = (cost * quantity).toStringAsFixed(2);
-
-              // ✅ Si el producto no existe, no crashear (modo auditoría)
-              final productName = product?.name ?? 'Producto eliminado (#$productId)';
-
-              return ListTile(
-                title: Text(productName),
-                subtitle: Text(
-                  'Cantidad: $quantity  |  Costo: \$${cost.toStringAsFixed(2)}',
-                ),
-                trailing: Text('Total: \$${total}'),
-              );
-            }),
-
-            const Divider(),
-            Text('Cantidad Total: $totalQty'),
-            Text('Costo Total: \$${totalCost.toStringAsFixed(2)}'),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cerrar'),
-        ),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.print),
-          label: const Text('Imprimir'),
-          onPressed: () => _printLastReport(),
-        ),
-      ],
-    ),
-  );
-}
-
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cerrar'),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.print),
+                label: const Text('Imprimir'),
+                onPressed: () => _printLastReport(),
+              ),
+            ],
+          ),
+    );
+  }
 
   Future<void> _generatePagosCreditoReport() async {
-    final sales = await DBHelper.getAllSales();
-    final filtered =
-        sales.where((s) {
-          final saleDate = DateTime.parse(s.date);
-          return s.isCredit &&
-              s.amountDue < s.total &&
-              saleDate.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
-              saleDate.isBefore(_endDate!.add(const Duration(days: 1)));
-        }).toList();
-
+    final payments = await DBHelper.getPaymentHistoryBetweenDates(
+      _startDate!,
+      _endDate!,
+    );
     double totalPagado = 0;
     final List<Map<String, dynamic>> detalles = [];
 
-    for (var sale in filtered) {
-      final cliente = await DBHelper.getClientByPhone(sale.clientPhone ?? '');
+    for (var payment in payments) {
+      final amount = (payment['amount'] as num?)?.toDouble() ?? 0.0;
+      final paymentDate = payment['payment_date']?.toString();
+      if (paymentDate == null || paymentDate.isEmpty || amount <= 0) continue;
+
+      final clientPhone = payment['client_phone']?.toString() ?? '';
+      final cliente = await DBHelper.getClientByPhone(clientPhone);
       final nombreCliente =
           cliente != null
               ? '${cliente.name} ${cliente.lastName}'
-              : 'Desconocido';
-      final pagado = sale.total - sale.amountDue;
+              : (clientPhone.isEmpty ? 'Desconocido' : clientPhone);
 
-      totalPagado += pagado;
+      totalPagado += amount;
       detalles.add({
-        'fecha': sale.date,
+        'fecha': paymentDate,
         'cliente': nombreCliente,
-        'monto': pagado,
+        'monto': amount,
       });
     }
 
@@ -887,7 +941,8 @@ trailing: Text(
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder:
+          (_) => AlertDialog(
             title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
@@ -933,7 +988,8 @@ trailing: Text(
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder:
+          (_) => AlertDialog(
             title: Text(_lastReportTitle),
             content: SingleChildScrollView(
               child: Column(
@@ -1004,16 +1060,16 @@ trailing: Text(
           ),
     );
   }
-  
+
   // Método para imprimir el último reporte generado
   Future<void> _printLastReport() async {
     if (_lastReportData.isEmpty || _lastReportTitle.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No hay reporte para imprimir')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No hay reporte para imprimir')));
       return;
     }
-    
+
     try {
       // Mostrar indicador de progreso
       showDialog(
@@ -1031,7 +1087,7 @@ trailing: Text(
           );
         },
       );
-      
+
       // Verificar conexión a la impresora
       final connected = await PrinterHelper.connectToPrinter();
       if (!connected) {
@@ -1041,17 +1097,17 @@ trailing: Text(
         );
         return;
       }
-      
+
       // Imprimir según el tipo de reporte
       await _printReportByType();
-      
+
       // Cerrar diálogo de progreso
       Navigator.pop(context);
-      
+
       // Mensaje de éxito
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Reporte impreso correctamente')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Reporte impreso correctamente')));
     } catch (e) {
       // Cerrar diálogo de progreso si hay error
       if (Navigator.canPop(context)) {
@@ -1063,7 +1119,7 @@ trailing: Text(
       );
     }
   }
-  
+
   // Imprime el tipo de reporte específico
   Future<void> _printReportByType() async {
     switch (_lastReportType) {
@@ -1095,51 +1151,101 @@ trailing: Text(
         throw Exception('Tipo de reporte no implementado para impresión');
     }
   }
-  
+
   // Métodos específicos para imprimir cada tipo de reporte
   Future<void> _printFacturacionReport() async {
     final sales = _lastReportData['sales'] as List<Sale>;
     final creditTotal = _lastReportData['creditTotal'] as double;
     final cashTotal = _lastReportData['cashTotal'] as double;
-    final creditPaymentsTotal = _lastReportData['creditPaymentsTotal'] as double;
+    final creditPaymentsTotal =
+        _lastReportData['creditPaymentsTotal'] as double;
     final profitTotal = _lastReportData['profitTotal'] as double;
     final totalDiscounts = _lastReportData['totalDiscounts'] as double;
     final startDate = _lastReportData['startDate'] as DateTime;
     final endDate = _lastReportData['endDate'] as DateTime;
     final total = creditTotal + cashTotal;
     final now = DateTime.now();
-    
+
     // Imprimir encabezado
     await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
     await PrinterHelper.bluetooth.printCustom("REPORTE DE FACTURACIÓN", 1, 1);
     await PrinterHelper.bluetooth.printNewLine();
-    
+
     // Fechas
-    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+
     // Resumen
     await PrinterHelper.bluetooth.printCustom("RESUMEN DE FACTURACIÓN:", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Facturas emitidas: ${sales.length}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Ventas a crédito: \$${creditTotal.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Ventas al contado: \$${cashTotal.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total ventas: \$${total.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Pagos a crédito: \$${creditPaymentsTotal.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Descuentos: \$${totalDiscounts.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Ganancia: \$${profitTotal.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Facturas emitidas: ${sales.length}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Ventas a crédito: \$${creditTotal.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Ventas al contado: \$${cashTotal.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total ventas: \$${total.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Pagos a crédito: \$${creditPaymentsTotal.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Descuentos: \$${totalDiscounts.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Ganancia: \$${profitTotal.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+
     // Detalle de facturas (limitado a 20 para no hacer el recibo muy largo)
     await PrinterHelper.bluetooth.printCustom("DETALLE DE FACTURAS:", 0, 0);
     int count = 0;
     for (var sale in sales) {
       if (count >= 20) {
-        await PrinterHelper.bluetooth.printCustom("... y ${sales.length - 20} facturas más", 0, 0);
+        await PrinterHelper.bluetooth.printCustom(
+          "... y ${sales.length - 20} facturas más",
+          0,
+          0,
+        );
         break;
       }
-      
-      String line = "F#${sale.id} - ${DateFormat('MM/dd').format(DateTime.parse(sale.date))} - \$${sale.total.toStringAsFixed(2)}";
+
+      String line =
+          "F#${sale.id} - ${DateFormat('MM/dd').format(DateTime.parse(sale.date))} - \$${sale.total.toStringAsFixed(2)}";
       await PrinterHelper.bluetooth.printCustom(line, 0, 0);
       count++;
     }
@@ -1150,7 +1256,7 @@ trailing: Text(
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printNewLine();
   }
-  
+
   Future<void> _printInventarioReport() async {
     final supplier = _lastReportData['supplier'] as Supplier;
     final entries = _lastReportData['entries'] as List<dynamic>;
@@ -1160,18 +1266,34 @@ trailing: Text(
     final startDate = _lastReportData['startDate'] as DateTime;
     final endDate = _lastReportData['endDate'] as DateTime;
     final now = DateTime.now();
-    
+
     // Imprimir encabezado
     await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
     await PrinterHelper.bluetooth.printCustom("REPORTE DE INVENTARIO", 1, 1);
     await PrinterHelper.bluetooth.printNewLine();
-    
+
     // Información de proveedor y fechas
-    await PrinterHelper.bluetooth.printCustom("Proveedor: ${supplier.name}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Proveedor: ${supplier.name}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+
     // Detalle de entradas
     await PrinterHelper.bluetooth.printCustom("DETALLE DE ENTRADAS:", 0, 0);
     for (var entry in entries) {
@@ -1179,23 +1301,39 @@ trailing: Text(
       final quantity = entry['quantity'] as int;
       final cost = entry['cost'] as double;
       final total = cost * quantity;
-      
+
       String productName = product.name;
       if (productName.length > 16) {
         productName = productName.substring(0, 16) + "...";
       }
-      
+
       await PrinterHelper.bluetooth.printCustom(productName, 0, 0);
-      await PrinterHelper.bluetooth.printCustom("Cant: $quantity  Costo: \$${cost.toStringAsFixed(2)}", 0, 0);
-      await PrinterHelper.bluetooth.printCustom("Total: \$${total.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom(
+        "Cant: $quantity  Costo: \$${cost.toStringAsFixed(2)}",
+        0,
+        0,
+      );
+      await PrinterHelper.bluetooth.printCustom(
+        "Total: \$${total.toStringAsFixed(2)}",
+        0,
+        0,
+      );
       await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
     }
-    
+
     // Totales
     await PrinterHelper.bluetooth.printCustom("RESUMEN:", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Cantidad total: $totalQty", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Costo total: \$${totalCost.toStringAsFixed(2)}", 0, 0);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Cantidad total: $totalQty",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Costo total: \$${totalCost.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
     await PrinterHelper.bluetooth.printNewLine();
@@ -1203,24 +1341,40 @@ trailing: Text(
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printNewLine();
   }
-  
+
   Future<void> _printPagosCreditoReport() async {
     final detalles = _lastReportData['detalles'] as List<dynamic>;
     final totalPagado = _lastReportData['totalPagado'] as double;
     final startDate = _lastReportData['startDate'] as DateTime;
     final endDate = _lastReportData['endDate'] as DateTime;
     final now = DateTime.now();
-    
+
     // Imprimir encabezado
     await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
-    await PrinterHelper.bluetooth.printCustom("PAGOS A CRÉDITO RECIBIDOS", 1, 1);
+    await PrinterHelper.bluetooth.printCustom(
+      "PAGOS A CRÉDITO RECIBIDOS",
+      1,
+      1,
+    );
     await PrinterHelper.bluetooth.printNewLine();
-    
+
     // Fechas
-    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+
     // Detalle de pagos
     await PrinterHelper.bluetooth.printCustom("DETALLE DE PAGOS:", 0, 0);
     for (var detalle in detalles) {
@@ -1228,19 +1382,29 @@ trailing: Text(
       if (cliente.length > 18) {
         cliente = cliente.substring(0, 18) + "...";
       }
-      
-      final fecha = DateFormat('yyyy-MM-dd').format(DateTime.parse(detalle['fecha']));
+
+      final fecha = DateFormat(
+        'yyyy-MM-dd',
+      ).format(DateTime.parse(detalle['fecha']));
       final monto = detalle['monto'] as double;
-      
+
       await PrinterHelper.bluetooth.printCustom(cliente, 0, 0);
       await PrinterHelper.bluetooth.printCustom("Fecha: $fecha", 0, 0);
-      await PrinterHelper.bluetooth.printCustom("Monto: \$${monto.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom(
+        "Monto: \$${monto.toStringAsFixed(2)}",
+        0,
+        0,
+      );
       await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
     }
-    
+
     // Total
-    await PrinterHelper.bluetooth.printCustom("TOTAL PAGADO: \$${totalPagado.toStringAsFixed(2)}", 0, 0);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "TOTAL PAGADO: \$${totalPagado.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
     await PrinterHelper.bluetooth.printNewLine();
@@ -1248,24 +1412,36 @@ trailing: Text(
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printNewLine();
   }
-  
+
   Future<void> _printGastosReport() async {
     final gastos = _lastReportData['gastos'] as List<dynamic>;
     final totalGastos = _lastReportData['totalGastos'] as double;
     final startDate = _lastReportData['startDate'] as DateTime;
     final endDate = _lastReportData['endDate'] as DateTime;
     final now = DateTime.now();
-    
+
     // Imprimir encabezado
     await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
     await PrinterHelper.bluetooth.printCustom("HISTORIAL DE GASTOS", 1, 1);
     await PrinterHelper.bluetooth.printNewLine();
-    
+
     // Fechas
-    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+
     // Detalle de gastos
     await PrinterHelper.bluetooth.printCustom("DETALLE DE GASTOS:", 0, 0);
     for (var gasto in gastos) {
@@ -1273,19 +1449,29 @@ trailing: Text(
       if (concepto.length > 20) {
         concepto = concepto.substring(0, 20) + "...";
       }
-      
-      final fecha = DateFormat('yyyy-MM-dd').format(DateTime.parse(gasto['date']));
+
+      final fecha = DateFormat(
+        'yyyy-MM-dd',
+      ).format(DateTime.parse(gasto['date']));
       final monto = gasto['amount'] as double;
-      
+
       await PrinterHelper.bluetooth.printCustom(concepto, 0, 0);
       await PrinterHelper.bluetooth.printCustom("Fecha: $fecha", 0, 0);
-      await PrinterHelper.bluetooth.printCustom("Monto: \$${monto.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom(
+        "Monto: \$${monto.toStringAsFixed(2)}",
+        0,
+        0,
+      );
       await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
     }
-    
+
     // Total
-    await PrinterHelper.bluetooth.printCustom("TOTAL GASTOS: \$${totalGastos.toStringAsFixed(2)}", 0, 0);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "TOTAL GASTOS: \$${totalGastos.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
     await PrinterHelper.bluetooth.printNewLine();
@@ -1293,7 +1479,7 @@ trailing: Text(
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printNewLine();
   }
-  
+
   Future<void> _printResumenGeneralReport() async {
     final data = _lastReportData['data'] as Map<String, dynamic>;
     final gananciaBruta = _lastReportData['gananciaBruta'] as double;
@@ -1302,29 +1488,81 @@ trailing: Text(
     final startDate = _lastReportData['startDate'] as DateTime;
     final endDate = _lastReportData['endDate'] as DateTime;
     final now = DateTime.now();
-    
+
     // Imprimir encabezado
     await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
     await PrinterHelper.bluetooth.printCustom("RESUMEN GENERAL", 1, 1);
     await PrinterHelper.bluetooth.printNewLine();
-    
+
     // Fechas
-    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+
     // Datos del resumen
-    await PrinterHelper.bluetooth.printCustom("Facturas generadas: ${data['facturas']}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total Ventas: \$${(data['ventas'] as double).toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Pagos a Crédito: \$${(data['pagos_credito'] as double).toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Descuentos: \$${(data['descuentos'] as double).toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Productos Vendidos: ${data['productos']}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Ingreso Inventario: \$${(data['inventario'] as double).toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Gastos: \$${gastos.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Ganancia Estimada: \$${gananciaBruta.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    await PrinterHelper.bluetooth.printCustom("GANANCIA NETA: \$${gananciaNeta.toStringAsFixed(2)}", 1, 0);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Facturas generadas: ${data['facturas']}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total Ventas: \$${(data['ventas'] as double).toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Pagos a Crédito: \$${(data['pagos_credito'] as double).toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Descuentos: \$${(data['descuentos'] as double).toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Productos Vendidos: ${data['productos']}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Ingreso Inventario: \$${(data['inventario'] as double).toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Gastos: \$${gastos.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Ganancia Estimada: \$${gananciaBruta.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "GANANCIA NETA: \$${gananciaNeta.toStringAsFixed(2)}",
+      1,
+      0,
+    );
+
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
     await PrinterHelper.bluetooth.printNewLine();
@@ -1332,13 +1570,14 @@ trailing: Text(
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printNewLine();
   }
-  
+
   Future<void> _printFacturasClienteReport() async {
     final cliente = _lastReportData['cliente'] as Client;
     final nombreCliente = _lastReportData['nombreCliente'] as String;
     final facturas = _lastReportData['facturas'] as List<dynamic>;
     final countCredito = _lastReportData['countCredito'] as int;
     final countContado = _lastReportData['countContado'] as int;
+    final countAnuladas = (_lastReportData['countAnuladas'] as int?) ?? 0;
     final totalCredito = _lastReportData['totalCredito'] as double;
     final totalContado = _lastReportData['totalContado'] as double;
     final totalPagado = _lastReportData['totalPagado'] as double;
@@ -1346,54 +1585,125 @@ trailing: Text(
     final startDate = _lastReportData['startDate'] as DateTime;
     final endDate = _lastReportData['endDate'] as DateTime;
     final now = DateTime.now();
-    
+
     // Imprimir encabezado
     await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
     await PrinterHelper.bluetooth.printCustom("FACTURACIÓN POR CLIENTE", 1, 1);
     await PrinterHelper.bluetooth.printNewLine();
-    
+
     // Información del cliente y fechas
     await PrinterHelper.bluetooth.printCustom("Cliente: $nombreCliente", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Teléfono: ${cliente.phone}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Teléfono: ${cliente.phone}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+
     // Detalle de facturas (limitado a 15 para no hacer el recibo muy largo)
     await PrinterHelper.bluetooth.printCustom("FACTURAS:", 0, 0);
     int count = 0;
     for (var f in facturas) {
       if (count >= 15) {
-        await PrinterHelper.bluetooth.printCustom("... y ${facturas.length - 15} facturas más", 0, 0);
+        await PrinterHelper.bluetooth.printCustom(
+          "... y ${facturas.length - 15} facturas más",
+          0,
+          0,
+        );
         break;
       }
-      
-      final total = f['total'] as double;
-      final deuda = f['amountDue'] as double;
+
+      final total = _asDouble(f['total']);
+      final deuda = _asDouble(f['amountDue']);
       final pagado = total - deuda;
-      final isCredito = f['isCredit'] == 1;
-      final estado = isCredito ? (deuda == 0 ? "PAGADA" : "PENDIENTE") : "";
+      final isCredito = _asInt(f['isCredit']) == 1;
+      final isAnulada = _isVoidedSale(f);
+      final estado =
+          isAnulada
+              ? "ANULADA"
+              : isCredito
+              ? (deuda == 0 ? "PAGADA" : "PENDIENTE")
+              : "";
+      final tipo =
+          isAnulada
+              ? "ANULADA (${isCredito ? 'Credito' : 'Contado'})"
+              : "${isCredito ? 'Credito' : 'Contado'} $estado";
       final fecha = DateFormat('yyyy-MM-dd').format(DateTime.parse(f['date']));
-      
-      await PrinterHelper.bluetooth.printCustom("Factura #${f['id']} - $fecha", 0, 0);
-      await PrinterHelper.bluetooth.printCustom("Tipo: ${isCredito ? 'Crédito' : 'Contado'} $estado", 0, 0);
-      if (isCredito) {
-        await PrinterHelper.bluetooth.printCustom("Pagado: \$${pagado.toStringAsFixed(2)}", 0, 0);
+
+      await PrinterHelper.bluetooth.printCustom(
+        "Factura #${f['id']} - $fecha",
+        0,
+        0,
+      );
+      await PrinterHelper.bluetooth.printCustom("Tipo: $tipo", 0, 0);
+      if (isCredito && !isAnulada) {
+        await PrinterHelper.bluetooth.printCustom(
+          "Pagado: \$${pagado.toStringAsFixed(2)}",
+          0,
+          0,
+        );
       }
-      await PrinterHelper.bluetooth.printCustom("Total: \$${total.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom(
+        "Total: \$${total.toStringAsFixed(2)}",
+        0,
+        0,
+      );
       await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
       count++;
     }
-    
+
     // Resumen
     await PrinterHelper.bluetooth.printCustom("RESUMEN:", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Facturas a Crédito: $countCredito", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Facturas al Contado: $countContado", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total a Crédito: \$${totalCredito.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total al Contado: \$${totalContado.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total Pagado (Crédito): \$${totalPagado.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total Adeudado: \$${totalDeuda.toStringAsFixed(2)}", 0, 0);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Facturas a Crédito: $countCredito",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Facturas al Contado: $countContado",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Facturas anuladas: $countAnuladas",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total a Crédito: \$${totalCredito.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total al Contado: \$${totalContado.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total Pagado (Crédito): \$${totalPagado.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total Adeudado: \$${totalDeuda.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
     await PrinterHelper.bluetooth.printNewLine();
@@ -1401,7 +1711,7 @@ trailing: Text(
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printNewLine();
   }
-  
+
   Future<void> _printProductosNegocioReport() async {
     final negocio = _lastReportData['negocio'] as String;
     final data = _lastReportData['data'] as List<dynamic>;
@@ -1412,18 +1722,30 @@ trailing: Text(
     final startDate = _lastReportData['startDate'] as DateTime;
     final endDate = _lastReportData['endDate'] as DateTime;
     final now = DateTime.now();
-    
+
     // Imprimir encabezado
     await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
     await PrinterHelper.bluetooth.printCustom("PRODUCTOS VENDIDOS", 1, 1);
     await PrinterHelper.bluetooth.printCustom("NEGOCIO: $negocio", 1, 1);
     await PrinterHelper.bluetooth.printNewLine();
-    
+
     // Fechas
-    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+
     // Detalle de productos
     await PrinterHelper.bluetooth.printCustom("PRODUCTOS VENDIDOS:", 0, 0);
     for (var row in data) {
@@ -1431,24 +1753,48 @@ trailing: Text(
       if (producto.length > 20) {
         producto = producto.substring(0, 20) + "...";
       }
-      
+
       final cantidad = row['total_quantity'] as int;
       final descuento = row['total_discount'] as double;
       final ventas = row['total_sales'] as double;
-      
+
       await PrinterHelper.bluetooth.printCustom(producto, 0, 0);
-      await PrinterHelper.bluetooth.printCustom("Cant: $cantidad  Desc: \$${descuento.toStringAsFixed(2)}", 0, 0);
-      await PrinterHelper.bluetooth.printCustom("Total: \$${ventas.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom(
+        "Cant: $cantidad  Desc: \$${descuento.toStringAsFixed(2)}",
+        0,
+        0,
+      );
+      await PrinterHelper.bluetooth.printCustom(
+        "Total: \$${ventas.toStringAsFixed(2)}",
+        0,
+        0,
+      );
       await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
     }
-    
+
     // Totales
     await PrinterHelper.bluetooth.printCustom("RESUMEN:", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total Productos: $totalCantidad", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total Descuentos: \$${totalDescuento.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total Ventas: \$${totalVentas.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total Ganancia: \$${totalGanancia.toStringAsFixed(2)}", 0, 0);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Total Productos: $totalCantidad",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total Descuentos: \$${totalDescuento.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total Ventas: \$${totalVentas.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total Ganancia: \$${totalGanancia.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
     await PrinterHelper.bluetooth.printNewLine();
@@ -1456,7 +1802,7 @@ trailing: Text(
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printNewLine();
   }
-  
+
   Future<void> _printRentablesReport() async {
     final data = _lastReportData['data'] as List<dynamic>;
     final totalArticulos = _lastReportData['totalArticulos'] as int;
@@ -1465,17 +1811,29 @@ trailing: Text(
     final startDate = _lastReportData['startDate'] as DateTime;
     final endDate = _lastReportData['endDate'] as DateTime;
     final now = DateTime.now();
-    
+
     // Imprimir encabezado
     await PrinterHelper.bluetooth.printCustom("DECOYAMIX", 1, 1);
     await PrinterHelper.bluetooth.printCustom("PRODUCTOS RENTABLES", 1, 1);
     await PrinterHelper.bluetooth.printNewLine();
-    
+
     // Fechas
-    await PrinterHelper.bluetooth.printCustom("Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("--------------------------------", 0, 1);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Periodo: ${DateFormat('yyyy-MM-dd').format(startDate)} a ${DateFormat('yyyy-MM-dd').format(endDate)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Generado: ${DateFormat('yyyy-MM-dd HH:mm').format(now)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "--------------------------------",
+      0,
+      1,
+    );
+
     // Detalle de productos
     await PrinterHelper.bluetooth.printCustom("PRODUCTOS RENTABLES:", 0, 0);
     for (var row in data) {
@@ -1483,23 +1841,43 @@ trailing: Text(
       if (producto.length > 20) {
         producto = producto.substring(0, 20) + "...";
       }
-      
+
       final veces = row['times_sold'] as int;
       final descuento = row['total_discount'] as double;
       final ingreso = row['total_income'] as double;
-      
+
       await PrinterHelper.bluetooth.printCustom(producto, 0, 0);
-      await PrinterHelper.bluetooth.printCustom("Veces: $veces  Desc: \$${descuento.toStringAsFixed(2)}", 0, 0);
-      await PrinterHelper.bluetooth.printCustom("Ingreso: \$${ingreso.toStringAsFixed(2)}", 0, 0);
+      await PrinterHelper.bluetooth.printCustom(
+        "Veces: $veces  Desc: \$${descuento.toStringAsFixed(2)}",
+        0,
+        0,
+      );
+      await PrinterHelper.bluetooth.printCustom(
+        "Ingreso: \$${ingreso.toStringAsFixed(2)}",
+        0,
+        0,
+      );
       await PrinterHelper.bluetooth.printCustom("----------------", 0, 1);
     }
-    
+
     // Totales
     await PrinterHelper.bluetooth.printCustom("RESUMEN:", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total artículos: $totalArticulos", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total descuentos: \$${totalDescuento.toStringAsFixed(2)}", 0, 0);
-    await PrinterHelper.bluetooth.printCustom("Total ingresos: \$${totalIngreso.toStringAsFixed(2)}", 0, 0);
-    
+    await PrinterHelper.bluetooth.printCustom(
+      "Total artículos: $totalArticulos",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total descuentos: \$${totalDescuento.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+    await PrinterHelper.bluetooth.printCustom(
+      "Total ingresos: \$${totalIngreso.toStringAsFixed(2)}",
+      0,
+      0,
+    );
+
     await PrinterHelper.bluetooth.printNewLine();
     await PrinterHelper.bluetooth.printCustom("*** FIN DEL REPORTE ***", 0, 1);
     await PrinterHelper.bluetooth.printNewLine();
@@ -1611,7 +1989,7 @@ trailing: Text(
                 minimumSize: const Size.fromHeight(48),
               ),
             ),
-            
+
             if (_lastReportData.isNotEmpty) ...[
               const SizedBox(height: 16),
               ElevatedButton.icon(

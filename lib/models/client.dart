@@ -41,15 +41,15 @@ class Client {
   factory Client.fromMap(Map<String, dynamic> map) {
     return Client(
       id: map['id'],
-      name: map['name'],
-      lastName: map['lastName'],
-      phone: map['phone'],
-      address: map['address'],
-      email: map['email'],
+      name: map['name'] ?? '',
+      lastName: map['lastName'] ?? '',
+      phone: map['phone'] ?? '',
+      address: map['address'] ?? '',
+      email: map['email'] ?? '',
       hasCredit: map['hasCredit'] == 1,
       creditLimit: (map['creditLimit'] ?? 0).toDouble(),
       credit: (map['credit'] ?? 0).toDouble(),
-      creditAvailable: (map['creditAvailable'] as num).toDouble(),
+      creditAvailable: (map['creditAvailable'] as num? ?? 0).toDouble(),
     );
   }
 }

@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 //import 'db/db_helper.dart';
+import 'config/supabase_config.dart';
 import 'helpers/error_logger.dart';
 import 'screens/bottom_nav_bar.dart';
 import 'route_observer.dart';
-
-
 
 /*void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,38 +14,44 @@ import 'route_observer.dart';
   runApp(const MyApp());
 } */
 
-
 void main() {
-  runZonedGuarded(() {
-    WidgetsFlutterBinding.ensureInitialized();
-
-    FlutterError.onError = (FlutterErrorDetails details) {
-      FlutterError.presentError(details);
-      ErrorLogger.log(
-        source: 'FlutterError',
-        error: details.exception,
-        stackTrace: details.stack,
-        details: details.context?.toDescription(),
+  runZonedGuarded<Future<void>>(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      await Supabase.initialize(
+        url: SupabaseConfig.url,
+        anonKey: SupabaseConfig.anonKey,
       );
-    };
 
-    PlatformDispatcher.instance.onError = (error, stack) {
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.presentError(details);
+        ErrorLogger.log(
+          source: 'FlutterError',
+          error: details.exception,
+          stackTrace: details.stack,
+          details: details.context?.toDescription(),
+        );
+      };
+
+      PlatformDispatcher.instance.onError = (error, stack) {
+        ErrorLogger.log(
+          source: 'PlatformDispatcher',
+          error: error,
+          stackTrace: stack,
+        );
+        return true;
+      };
+
+      runApp(const MyApp());
+    },
+    (error, stackTrace) {
       ErrorLogger.log(
-        source: 'PlatformDispatcher',
+        source: 'runZonedGuarded',
         error: error,
-        stackTrace: stack,
+        stackTrace: stackTrace,
       );
-      return true;
-    };
-
-    runApp(const MyApp());
-  }, (error, stackTrace) {
-    ErrorLogger.log(
-      source: 'runZonedGuarded',
-      error: error,
-      stackTrace: stackTrace,
-    );
-  });
+    },
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -57,10 +63,7 @@ class MyApp extends StatelessWidget {
       title: 'POS App',
       navigatorObservers: [routeObserver], // Aquí usas el RouteObserver
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
-        useMaterial3: true,
-      ),
+      theme: ThemeData(primarySwatch: Colors.deepPurple, useMaterial3: true),
       home: BottomNavBar(), // ✅ Sin const
     );
   }

@@ -8,6 +8,8 @@ import '../models/sale_item.dart';
 import '../models/expense.dart';
 import '../models/expense_entry.dart';
 import '../notifiers/inventory_notifier.dart';
+import '../helpers/error_logger.dart';
+import '../helpers/supabase_sync_helper.dart';
 import 'dart:convert';
 
 class DBHelper {
@@ -24,13 +26,13 @@ class DBHelper {
   }
 
   static Future<Database> initDB() async {
-  final path = join(await getDatabasesPath(), 'pos.db');
+    final path = join(await getDatabasesPath(), 'pos.db');
 
-  return openDatabase(
-    path,
-    version: 2, // ✅ subimos versión para poder agregar columnas nuevas
-    onCreate: (db, version) async {
-      await db.execute('''
+    return openDatabase(
+      path,
+      version: 2, // ✅ subimos versión para poder agregar columnas nuevas
+      onCreate: (db, version) async {
+        await db.execute('''
         CREATE TABLE products (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT,
@@ -47,7 +49,7 @@ class DBHelper {
         );
       ''');
 
-      await db.execute('''
+        await db.execute('''
         CREATE TABLE suppliers (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT,
@@ -58,7 +60,7 @@ class DBHelper {
         );
       ''');
 
-      await db.execute('''
+        await db.execute('''
         CREATE TABLE clients (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT,
@@ -73,7 +75,7 @@ class DBHelper {
         );
       ''');
 
-      await db.execute('''
+        await db.execute('''
         CREATE TABLE sales (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           date TEXT,
@@ -89,7 +91,7 @@ class DBHelper {
         );
       ''');
 
-      await db.execute('''
+        await db.execute('''
         CREATE TABLE sale_items (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           sale_id INTEGER,
@@ -101,7 +103,7 @@ class DBHelper {
         );
       ''');
 
-      await db.execute('''
+        await db.execute('''
         CREATE TABLE inventory_entries (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           product_id INTEGER,
@@ -114,14 +116,14 @@ class DBHelper {
         );
       ''');
 
-      await db.execute('''
+        await db.execute('''
         CREATE TABLE expenses (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT
         );
       ''');
 
-      await db.execute('''
+        await db.execute('''
         CREATE TABLE expense_entries (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           expense_id INTEGER,
@@ -131,7 +133,7 @@ class DBHelper {
         );
       ''');
 
-      await db.execute('''
+        await db.execute('''
         CREATE TABLE payment_history(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           client_phone TEXT,
@@ -142,32 +144,34 @@ class DBHelper {
           created_at TEXT
         );
       ''');
-    },
+      },
 
-    // ✅ IMPORTANTE: si el usuario ya tiene DB creada, esto le agrega columnas sin borrar nada
-    onUpgrade: (db, oldVersion, newVersion) async {
-      if (oldVersion < 2) {
-        // ✅ PRODUCTS
-        try {
-          await db.execute(
-              "ALTER TABLE products ADD COLUMN is_rentable INTEGER DEFAULT 0");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE products ADD COLUMN createdAt TEXT");
-        } catch (_) {}
+      // ✅ IMPORTANTE: si el usuario ya tiene DB creada, esto le agrega columnas sin borrar nada
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          // ✅ PRODUCTS
+          try {
+            await db.execute(
+              "ALTER TABLE products ADD COLUMN is_rentable INTEGER DEFAULT 0",
+            );
+          } catch (_) {}
+          try {
+            await db.execute("ALTER TABLE products ADD COLUMN createdAt TEXT");
+          } catch (_) {}
 
-        // ✅ SALES (void/anulada)
-        try {
-          await db.execute(
-              "ALTER TABLE sales ADD COLUMN isVoided INTEGER DEFAULT 0");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE sales ADD COLUMN voidedAt TEXT");
-        } catch (_) {}
-      }
-    },
-  );
-}
+          // ✅ SALES (void/anulada)
+          try {
+            await db.execute(
+              "ALTER TABLE sales ADD COLUMN isVoided INTEGER DEFAULT 0",
+            );
+          } catch (_) {}
+          try {
+            await db.execute("ALTER TABLE sales ADD COLUMN voidedAt TEXT");
+          } catch (_) {}
+        }
+      },
+    );
+  }
 
   static Future<void> deleteDatabaseFile() async {
     final path = join(await getDatabasesPath(), 'pos.db');
@@ -177,28 +181,57 @@ class DBHelper {
   // ─────────────── SUPPLIERS ───────────────
   static Future<int> insertSupplier(Supplier supplier) async {
     final dbClient = await db;
-    return await dbClient.insert('suppliers', supplier.toMap());
+    final id = await _nextSafeLocalId('suppliers');
+    final supplierMap = supplier.toMap();
+    supplierMap['id'] = id;
+    await dbClient.insert('suppliers', supplierMap);
+    await SupabaseSyncHelper.syncSupplier(
+      Supplier(
+        id: id,
+        name: supplier.name,
+        phone: supplier.phone,
+        description: supplier.description,
+        address: supplier.address,
+        email: supplier.email,
+      ),
+    );
+    return id;
   }
 
   static Future<List<Supplier>> getSuppliers() async {
     final dbClient = await db;
+    try {
+      final cloudSuppliers = await SupabaseSyncHelper.getSuppliers();
+      if (cloudSuppliers.isNotEmpty) return cloudSuppliers;
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getSuppliers',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer proveedores desde Supabase. Se usara SQLite.',
+      );
+    }
+
     final result = await dbClient.query('suppliers');
     return result.map((e) => Supplier.fromMap(e)).toList();
   }
 
   static Future<int> updateSupplier(Supplier supplier) async {
     final dbClient = await db;
-    return await dbClient.update(
+    final updated = await dbClient.update(
       'suppliers',
       supplier.toMap(),
       where: 'id = ?',
       whereArgs: [supplier.id],
     );
+    await SupabaseSyncHelper.syncSupplier(supplier);
+    return updated;
   }
 
   static Future<void> deleteSupplier(int id) async {
     final dbClient = await db;
     await dbClient.delete('suppliers', where: 'id = ?', whereArgs: [id]);
+    await SupabaseSyncHelper.markDeleted('suppliers', id);
   }
 
   static Future<bool> supplierHasProducts(int supplierId) async {
@@ -242,82 +275,117 @@ class DBHelper {
   }
 
   static Future<List<Product>> getProducts() async {
-  final dbClient = await db;
-  final maps = await dbClient.query(
-    'products',
-    orderBy: 'datetime(createdAt) DESC', // ✅ más nuevo primero
-  );
-  return maps.map((e) => Product.fromMap(e)).toList();
-}
+    final dbClient = await db;
+    try {
+      final cloudProducts = await SupabaseSyncHelper.getProducts();
+      if (cloudProducts.isNotEmpty) {
+        for (final product in cloudProducts) {
+          if (product.id == null) continue;
+          await dbClient.insert(
+            'products',
+            product.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+        return cloudProducts;
+      }
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getProducts',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer productos desde Supabase. Se usara SQLite.',
+      );
+    }
 
+    final maps = await dbClient.query(
+      'products',
+      orderBy: 'datetime(createdAt) DESC', // ✅ más nuevo primero
+    );
+    return maps.map((e) => Product.fromMap(e)).toList();
+  }
 
   static Future<int> insertProduct(Product product) async {
     final dbClient = await db;
+    final id = await _nextSafeLocalId('products');
     final productMap = product.toMap();
-    productMap['createdAt'] = DateTime.now().toIso8601String(); // ← agregado
-    return await dbClient.insert('products', productMap);
+    final createdAt = DateTime.now().toIso8601String();
+    productMap['id'] = id;
+    productMap['createdAt'] = createdAt; // ← agregado
+    await dbClient.insert('products', productMap);
+    await SupabaseSyncHelper.syncProduct(
+      product.copyWith(id: id, createdAt: createdAt),
+    );
+    return id;
   }
 
   static Future<int> updateProduct(Product product) async {
     final dbClient = await db;
-    return await dbClient.update(
+    final updated = await dbClient.update(
       'products',
       product.toMap(),
       where: 'id = ?',
       whereArgs: [product.id],
     );
+    await SupabaseSyncHelper.syncProduct(product);
+    return updated;
   }
 
   static Future<void> deleteProduct(int id) async {
     final dbClient = await db;
     await dbClient.delete('products', where: 'id = ?', whereArgs: [id]);
+    await SupabaseSyncHelper.markDeleted('products', id);
   }
 
-Future<void> reduceProductStock(int productId, int quantity) async {
-  final dbClient = await db;
+  Future<void> reduceProductStock(int productId, int quantity) async {
+    final dbClient = await db;
 
-  final result = await dbClient.query(
-    'products',
-    where: 'id = ?',
-    whereArgs: [productId],
-    limit: 1,
-  );
-
-  if (result.isEmpty) return;
-
-  final row = result.first;
-
-  // ✅ Si es rentable, NO bajar inventario (producto “infinito”)
-  final isRentable = (row['is_rentable'] as int?) == 1;
-  if (isRentable) return;
-
-  final currentQty = (row['quantity'] as num?)?.toInt() ?? 0;
-  if (quantity <= 0) return;
-  if (currentQty < quantity) {
-    throw Exception('Stock insuficiente para producto ID $productId');
-  }
-  final newQty = currentQty - quantity;
-
-  await dbClient.update(
-    'products',
-    {'quantity': newQty},
-    where: 'id = ?',
-    whereArgs: [productId],
-  );
-
-  // ✅ Verificación de stock bajo (solo productos NO rentables)
-  if (newQty <= 5) {
-    print('⚠ Bajo inventario para producto ID $productId ($newQty unidades)');
-
-    final lowStock = await dbClient.query(
+    final result = await dbClient.query(
       'products',
-      where: 'quantity <= ? AND (is_rentable IS NULL OR is_rentable = 0)',
-      whereArgs: [5],
+      where: 'id = ?',
+      whereArgs: [productId],
+      limit: 1,
     );
-    InventoryNotifier.lowStockCount.value = lowStock.length;
-  }
-}
 
+    if (result.isEmpty) return;
+
+    final row = result.first;
+
+    // ✅ Si es rentable, NO bajar inventario (producto “infinito”)
+    final isRentable = (row['is_rentable'] as int?) == 1;
+    if (isRentable) return;
+
+    final currentQty = (row['quantity'] as num?)?.toInt() ?? 0;
+    if (quantity <= 0) return;
+    if (currentQty < quantity) {
+      throw Exception('Stock insuficiente para producto ID $productId');
+    }
+    final newQty = currentQty - quantity;
+
+    await dbClient.update(
+      'products',
+      {'quantity': newQty},
+      where: 'id = ?',
+      whereArgs: [productId],
+    );
+
+    final updatedProduct = await getProductById(productId);
+    if (updatedProduct != null) {
+      await SupabaseSyncHelper.syncProduct(updatedProduct);
+    }
+
+    // ✅ Verificación de stock bajo (solo productos NO rentables)
+    if (newQty <= 5) {
+      print('⚠ Bajo inventario para producto ID $productId ($newQty unidades)');
+
+      final lowStock = await dbClient.query(
+        'products',
+        where: 'quantity <= ? AND (is_rentable IS NULL OR is_rentable = 0)',
+        whereArgs: [5],
+      );
+      InventoryNotifier.lowStockCount.value = lowStock.length;
+    }
+  }
 
   static Future<Product?> getProductByBarcode(String barcode) async {
     final dbClient = await db;
@@ -338,6 +406,20 @@ Future<void> reduceProductStock(int productId, int quantity) async {
     DateTime end,
   ) async {
     final dbClient = await db;
+    try {
+      return await SupabaseSyncHelper.getProductSalesByBusiness(
+        businessType,
+        start,
+        end,
+      );
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getProductSalesByBusiness',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer reporte desde Supabase. Se usara SQLite.',
+      );
+    }
 
     final result = await dbClient.rawQuery(
       '''
@@ -401,13 +483,22 @@ Future<void> reduceProductStock(int productId, int quantity) async {
       );
 
       // Registrar la entrada en la tabla de inventario
-      await dbClient.insert('inventory_entries', {
+      final inventoryEntryId = await _nextSafeLocalId('inventory_entries');
+      final inventoryEntry = {
+        'id': inventoryEntryId,
         'product_id': productId,
         'supplier_id': current['supplierId'],
         'quantity': addedQuantity,
         'cost': unitCost,
         'date': DateTime.now().toIso8601String(),
-      });
+      };
+      await dbClient.insert('inventory_entries', inventoryEntry);
+      await SupabaseSyncHelper.syncInventoryEntry(inventoryEntry);
+
+      final updatedProduct = await getProductById(productId);
+      if (updatedProduct != null) {
+        await SupabaseSyncHelper.syncProduct(updatedProduct);
+      }
     }
   }
 
@@ -418,6 +509,21 @@ Future<void> reduceProductStock(int productId, int quantity) async {
     DateTime end,
   ) async {
     final dbClient = await db;
+    try {
+      return await SupabaseSyncHelper.getInventoryEntriesBySupplierAndDate(
+        supplierId,
+        start,
+        end,
+      );
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getInventoryEntriesBySupplierAndDate',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer inventario desde Supabase. Se usara SQLite.',
+      );
+    }
+
     final result = await dbClient.query(
       'inventory_entries',
       where: 'supplier_id = ? AND date BETWEEN ? AND ?',
@@ -431,51 +537,98 @@ Future<void> reduceProductStock(int productId, int quantity) async {
   }
 
   static Future<DateTime?> getLastInventoryEntryDate(int productId) async {
-  final dbClient = await db;
+    final dbClient = await db;
 
-  final result = await dbClient.query(
-    'inventory_entries',
-    columns: ['date'],
-    where: 'product_id = ?',
-    whereArgs: [productId],
-    orderBy: 'date DESC',
-    limit: 1,
-  );
+    final result = await dbClient.query(
+      'inventory_entries',
+      columns: ['date'],
+      where: 'product_id = ?',
+      whereArgs: [productId],
+      orderBy: 'date DESC',
+      limit: 1,
+    );
 
-  if (result.isEmpty) return null;
+    if (result.isEmpty) return null;
 
-  final raw = result.first['date'] as String?;
-  if (raw == null || raw.isEmpty) return null;
+    final raw = result.first['date'] as String?;
+    if (raw == null || raw.isEmpty) return null;
 
-  return DateTime.tryParse(raw);
-}
-
+    return DateTime.tryParse(raw);
+  }
 
   // ─────────────── CLIENTS ───────────────
   static Future<int> insertClient(Client client) async {
     final dbClient = await db;
-    return await dbClient.insert('clients', client.toMap());
+    final id = await _nextSafeLocalId('clients');
+    final clientMap = client.toMap();
+    clientMap['id'] = id;
+    await dbClient.insert('clients', clientMap);
+    await SupabaseSyncHelper.syncClient(
+      Client(
+        id: id,
+        name: client.name,
+        lastName: client.lastName,
+        phone: client.phone,
+        address: client.address,
+        email: client.email,
+        hasCredit: client.hasCredit,
+        creditLimit: client.creditLimit,
+        credit: client.credit,
+        creditAvailable: client.creditAvailable,
+      ),
+    );
+    return id;
   }
 
   static Future<List<Client>> getClients() async {
     final dbClient = await db;
+    try {
+      final cloudClients = await SupabaseSyncHelper.getClients();
+      if (cloudClients.isNotEmpty) {
+        for (final client in cloudClients) {
+          if (client.id == null) continue;
+          await dbClient.insert(
+            'clients',
+            client.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+        return cloudClients;
+      }
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getClients',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer clientes desde Supabase. Se usara SQLite.',
+      );
+    }
+
     final result = await dbClient.query('clients');
     return result.map((e) => Client.fromMap(e)).toList();
   }
 
   static Future<int> updateClient(Client client) async {
     final dbClient = await db;
-    return await dbClient.update(
+    final updated = await dbClient.update(
       'clients',
       client.toMap(),
       where: 'id = ?',
       whereArgs: [client.id],
     );
+    await SupabaseSyncHelper.syncClient(client);
+    return updated;
   }
 
   static Future<int> deleteClient(int id) async {
     final dbClient = await db;
-    return await dbClient.delete('clients', where: 'id = ?', whereArgs: [id]);
+    final deleted = await dbClient.delete(
+      'clients',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await SupabaseSyncHelper.markDeleted('clients', id);
+    return deleted;
   }
 
   static Future<Client?> getClientByPhone(String phone) async {
@@ -484,9 +637,26 @@ Future<void> reduceProductStock(int productId, int quantity) async {
       'clients',
       where: 'phone = ?',
       whereArgs: [phone],
+      limit: 1,
     );
     if (result.isNotEmpty) {
       return Client.fromMap(result.first);
+    }
+
+    try {
+      final cloudClients = await getClients();
+      for (final client in cloudClients) {
+        if (client.phone.trim() == phone.trim()) {
+          return client;
+        }
+      }
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getClientByPhone',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo resolver cliente por telefono desde Supabase.',
+      );
     }
     return null;
   }
@@ -503,6 +673,10 @@ Future<void> reduceProductStock(int productId, int quantity) async {
       where: 'phone = ?',
       whereArgs: [phone],
     );
+    final updatedClient = await getClientByPhone(phone);
+    if (updatedClient != null) {
+      await SupabaseSyncHelper.syncClient(updatedClient);
+    }
   }
 
   static Future<void> updateClientCreditAvailable(
@@ -516,6 +690,10 @@ Future<void> reduceProductStock(int productId, int quantity) async {
       where: 'phone = ?',
       whereArgs: [phone],
     );
+    final updatedClient = await getClientByPhone(phone);
+    if (updatedClient != null) {
+      await SupabaseSyncHelper.syncClient(updatedClient);
+    }
   }
 
   static Future<void> applyCreditPurchase(String phone, double amount) async {
@@ -551,6 +729,10 @@ Future<void> reduceProductStock(int productId, int quantity) async {
       where: 'phone = ?',
       whereArgs: [phone],
     );
+    final updatedClient = await getClientByPhone(phone);
+    if (updatedClient != null) {
+      await SupabaseSyncHelper.syncClient(updatedClient);
+    }
   }
 
   static Future<List<Sale>> getCreditSalesByClient(String phone) async {
@@ -587,6 +769,16 @@ Future<void> reduceProductStock(int productId, int quantity) async {
       where: 'id = ?',
       whereArgs: [saleId],
     );
+
+    final updatedSaleRows = await dbClient.query(
+      'sales',
+      where: 'id = ?',
+      whereArgs: [saleId],
+      limit: 1,
+    );
+    if (updatedSaleRows.isNotEmpty) {
+      await SupabaseSyncHelper.syncSale(updatedSaleRows.first);
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getOverdueCreditInvoices() async {
@@ -650,36 +842,58 @@ Future<void> reduceProductStock(int productId, int quantity) async {
   // ─────────────── SALES ───────────────
   static Future<int> insertSale(Sale sale) async {
     final dbClient = await db;
-    return await dbClient.insert('sales', sale.toMap());
+    final id = await _nextSafeLocalId('sales');
+    final saleMap = sale.toMap();
+    saleMap['id'] = id;
+    await dbClient.insert('sales', saleMap);
+    await SupabaseSyncHelper.syncSale(saleMap);
+    return id;
   }
 
   static Future<void> insertSaleItems(List<SaleItem> items) async {
     final dbClient = await db;
     for (var item in items) {
-      await dbClient.insert(
-        'sale_items',
-        item.toMap(),
-      ); // 👈 Esto debe incluir discount
+      final id = await _nextSafeLocalId('sale_items');
+      final itemMap = item.toMap();
+      itemMap['id'] = id;
+      await dbClient.insert('sale_items', itemMap);
+      await SupabaseSyncHelper.syncSaleItem(itemMap);
     }
   }
 
-// ─────────────── History SALES (Auditoría) ───────────────
-static Future<List<Sale>> getAllSales() async {
-  final dbClient = await db;
+  // ─────────────── History SALES (Auditoría) ───────────────
+  static Future<List<Sale>> getAllSales() async {
+    final dbClient = await db;
+    try {
+      return await SupabaseSyncHelper.getAllSales();
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getAllSales',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer ventas desde Supabase. Se usara SQLite.',
+      );
+    }
 
-  final result = await dbClient.query(
-    'sales',
-    orderBy: 'date DESC',
-  );
+    final result = await dbClient.query('sales', orderBy: 'date DESC');
 
-  return result.map((e) => Sale.fromMap(e)).toList();
-}
-
-
+    return result.map((e) => Sale.fromMap(e)).toList();
+  }
 
   // Obtener los ítems (productos vendidos) de una venta específica
   static Future<List<SaleItem>> getSaleItems(int saleId) async {
     final dbClient = await db;
+    try {
+      return await SupabaseSyncHelper.getSaleItems(saleId);
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getSaleItems',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer items desde Supabase. Se usara SQLite.',
+      );
+    }
+
     final result = await dbClient.query(
       'sale_items',
       where: 'sale_id = ?',
@@ -691,6 +905,18 @@ static Future<List<Sale>> getAllSales() async {
   // Obtener los detalles de una venta específica
   static Future<Sale?> getSaleById(int id) async {
     final dbClient = await db;
+    try {
+      final cloudSale = await SupabaseSyncHelper.getSaleById(id);
+      if (cloudSale != null) return cloudSale;
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getSaleById',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer venta desde Supabase. Se usara SQLite.',
+      );
+    }
+
     final result = await dbClient.query(
       'sales',
       where: 'id = ?',
@@ -706,18 +932,113 @@ static Future<List<Sale>> getAllSales() async {
   // Insertar gasto
   static Future<int> insertExpense(Expense expense) async {
     final dbClient = await db;
-    return await dbClient.insert('expenses', expense.toMap());
+    final id = await _nextSafeLocalId('expenses');
+    final expenseMap = expense.toMap();
+    expenseMap['id'] = id;
+    await dbClient.insert(
+      'expenses',
+      expenseMap,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await SupabaseSyncHelper.syncExpense(Expense(id: id, name: expense.name));
+    return id;
   }
 
   static Future<List<Expense>> getExpenses() async {
     final dbClient = await db;
+    try {
+      final cloudExpenses = await SupabaseSyncHelper.getExpenses();
+      for (final expense in cloudExpenses) {
+        if (expense.id == null) continue;
+        await dbClient.insert(
+          'expenses',
+          expense.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      return cloudExpenses;
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getExpenses',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer gastos desde Supabase. Se usara SQLite.',
+      );
+    }
+
     final result = await dbClient.query('expenses');
     return result.map((e) => Expense.fromMap(e)).toList();
   }
 
   static Future<int> insertExpenseEntry(ExpenseEntry entry) async {
     final dbClient = await db;
-    return await dbClient.insert('expense_entries', entry.toMap());
+    await _ensureLocalExpense(entry.expenseId);
+
+    final id = await _nextSafeLocalId('expense_entries');
+    final entryMap = entry.toMap();
+    entryMap['id'] = id;
+    await dbClient.insert(
+      'expense_entries',
+      entryMap,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+
+    final expenseRows = await dbClient.query(
+      'expenses',
+      where: 'id = ?',
+      whereArgs: [entry.expenseId],
+      limit: 1,
+    );
+    if (expenseRows.isNotEmpty) {
+      await SupabaseSyncHelper.syncExpense(Expense.fromMap(expenseRows.first));
+    }
+    await SupabaseSyncHelper.syncExpenseEntry(
+      ExpenseEntry(
+        id: id,
+        expenseId: entry.expenseId,
+        amount: entry.amount,
+        date: entry.date,
+      ),
+    );
+    return id;
+  }
+
+  static Future<void> _ensureLocalExpense(int expenseId) async {
+    final dbClient = await db;
+    final localRows = await dbClient.query(
+      'expenses',
+      where: 'id = ?',
+      whereArgs: [expenseId],
+      limit: 1,
+    );
+    if (localRows.isNotEmpty) return;
+
+    try {
+      final cloudExpense = await SupabaseSyncHelper.getExpenseByLocalId(
+        expenseId,
+      );
+      if (cloudExpense != null && cloudExpense.id != null) {
+        await dbClient.insert(
+          'expenses',
+          cloudExpense.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        return;
+      }
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper._ensureLocalExpense',
+        error: error,
+        stackTrace: stackTrace,
+        details:
+            'No se pudo confirmar el gasto en Supabase antes de registrar la entrada.',
+      );
+    }
+
+    await dbClient.insert('expenses', {
+      'id': expenseId,
+      'name': 'Gasto #$expenseId',
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   static Future<List<ExpenseEntry>> getEntriesByExpenseId(int expenseId) async {
@@ -734,13 +1055,36 @@ static Future<List<Sale>> getAllSales() async {
     DateTime startDate,
     DateTime endDate,
   ) async {
-    final dbClient = await db;
+    try {
+      await _syncLocalExpenseEntries(startDate, endDate);
+      final cloudHistory = await SupabaseSyncHelper.getExpenseHistory(
+        startDate,
+        endDate,
+      );
+      if (cloudHistory.isNotEmpty) return cloudHistory;
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getExpenseHistory',
+        error: error,
+        stackTrace: stackTrace,
+        details:
+            'No se pudo leer historial de gastos desde Supabase. Se usara SQLite.',
+      );
+    }
 
+    return await _getLocalExpenseHistory(startDate, endDate);
+  }
+
+  static Future<List<Map<String, dynamic>>> _getLocalExpenseHistory(
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    final dbClient = await db;
     final result = await dbClient.rawQuery(
       '''
-    SELECT e.name AS expense_name, ee.amount, ee.date
+    SELECT ee.id, ee.expense_id, e.name AS expense_name, ee.amount, ee.date
     FROM expense_entries ee
-    JOIN expenses e ON ee.expense_id = e.id
+    LEFT JOIN expenses e ON ee.expense_id = e.id
     WHERE date(ee.date) BETWEEN ? AND ?
     ORDER BY ee.date DESC
   ''',
@@ -753,12 +1097,49 @@ static Future<List<Sale>> getAllSales() async {
     return result
         .map(
           (row) => {
-            'expense_name': row['expense_name'],
+            'id': row['id'],
+            'expense_id': row['expense_id'],
+            'expense_name':
+                row['expense_name'] ?? 'Gasto #${row['expense_id']}',
             'amount': row['amount'],
             'date': row['date'],
           },
         )
         .toList();
+  }
+
+  static Future<void> _syncLocalExpenseEntries(
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    final dbClient = await db;
+    final rows = await dbClient.query(
+      'expense_entries',
+      where: 'date BETWEEN ? AND ?',
+      whereArgs: [
+        startDate.toIso8601String(),
+        endDate.add(const Duration(days: 1)).toIso8601String(),
+      ],
+    );
+
+    for (final row in rows) {
+      final expenseId = (row['expense_id'] as num?)?.toInt();
+      if (expenseId == null || expenseId <= 0) continue;
+
+      final expenseRows = await dbClient.query(
+        'expenses',
+        where: 'id = ?',
+        whereArgs: [expenseId],
+        limit: 1,
+      );
+      if (expenseRows.isNotEmpty) {
+        await SupabaseSyncHelper.syncExpense(
+          Expense.fromMap(expenseRows.first),
+        );
+      }
+
+      await SupabaseSyncHelper.syncExpenseEntry(ExpenseEntry.fromMap(row));
+    }
   }
 
   //reportes
@@ -810,116 +1191,127 @@ static Future<List<Sale>> getAllSales() async {
   }
 
   static Future<Map<String, dynamic>> getResumenGeneral(
-  DateTime start,
-  DateTime end,
-) async {
-  final dbClient = await db;
+    DateTime start,
+    DateTime end,
+  ) async {
+    final dbClient = await db;
+    try {
+      return await SupabaseSyncHelper.getResumenGeneral(start, end);
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getResumenGeneral',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer resumen desde Supabase. Se usara SQLite.',
+      );
+    }
 
-  // ✅ Ventas filtradas por fecha (EXCLUYE anuladas)
-  final sales = await dbClient.query(
-    'sales',
-    where: 'date BETWEEN ? AND ? AND (isVoided IS NULL OR isVoided = 0)',
-    whereArgs: [
-      start.toIso8601String(),
-      end.add(const Duration(days: 1)).toIso8601String(),
-    ],
-  );
-
-  int totalFacturas = sales.length;
-  double totalVentas = 0.0;
-  double pagosCredito = 0.0;
-  double descuentos = 0.0;
-  double ganancia = 0.0;
-  int productosVendidos = 0;
-
-  for (var sale in sales) {
-    totalVentas += (sale['total'] as num?)?.toDouble() ?? 0.0;
-
-    final saleId = sale['id'] as int;
-    final items = await dbClient.query(
-      'sale_items',
-      where: 'sale_id = ?',
-      whereArgs: [saleId],
+    // ✅ Ventas filtradas por fecha (EXCLUYE anuladas)
+    final sales = await dbClient.query(
+      'sales',
+      where: 'date BETWEEN ? AND ? AND (isVoided IS NULL OR isVoided = 0)',
+      whereArgs: [
+        start.toIso8601String(),
+        end.add(const Duration(days: 1)).toIso8601String(),
+      ],
     );
 
-    for (var item in items) {
-      final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
-      if (quantity <= 0) continue;
+    int totalFacturas = sales.length;
+    double totalVentas = 0.0;
+    double pagosCredito = 0.0;
+    double descuentos = 0.0;
+    double ganancia = 0.0;
+    int productosVendidos = 0;
 
-      final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
-      final discount = (item['discount'] as num?)?.toDouble() ?? 0.0;
-      final productId = item['product_id'] as int;
+    for (var sale in sales) {
+      totalVentas += (sale['total'] as num?)?.toDouble() ?? 0.0;
 
-      productosVendidos += quantity;
-      descuentos += discount * quantity;
-
-      final product = await dbClient.query(
-        'products',
-        columns: ['cost'],
-        where: 'id = ?',
-        whereArgs: [productId],
-        limit: 1,
+      final saleId = sale['id'] as int;
+      final items = await dbClient.query(
+        'sale_items',
+        where: 'sale_id = ?',
+        whereArgs: [saleId],
       );
 
-      if (product.isNotEmpty) {
-        final cost = (product.first['cost'] as num?)?.toDouble() ?? 0.0;
-        ganancia += ((subtotal / quantity) - cost) * quantity;
+      for (var item in items) {
+        final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+        if (quantity <= 0) continue;
+
+        final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
+        final discount = (item['discount'] as num?)?.toDouble() ?? 0.0;
+        final productId = item['product_id'] as int;
+
+        productosVendidos += quantity;
+        descuentos += discount * quantity;
+
+        final product = await dbClient.query(
+          'products',
+          columns: ['cost'],
+          where: 'id = ?',
+          whereArgs: [productId],
+          limit: 1,
+        );
+
+        if (product.isNotEmpty) {
+          final cost = (product.first['cost'] as num?)?.toDouble() ?? 0.0;
+          ganancia += ((subtotal / quantity) - cost) * quantity;
+        }
+      }
+
+      if ((sale['isCredit'] as int? ?? 0) == 1) {
+        final total = (sale['total'] as num?)?.toDouble() ?? 0.0;
+        final amountDue = (sale['amountDue'] as num?)?.toDouble() ?? 0.0;
+        pagosCredito += (total - amountDue);
       }
     }
 
-    if ((sale['isCredit'] as int? ?? 0) == 1) {
-      final total = (sale['total'] as num?)?.toDouble() ?? 0.0;
-      final amountDue = (sale['amountDue'] as num?)?.toDouble() ?? 0.0;
-      pagosCredito += (total - amountDue);
-    }
-  }
+    // Entradas de inventario (esto NO depende de sales, así que se queda igual)
+    final inventory = await dbClient.query(
+      'inventory_entries',
+      where: 'date BETWEEN ? AND ?',
+      whereArgs: [
+        start.toIso8601String(),
+        end.add(const Duration(days: 1)).toIso8601String(),
+      ],
+    );
 
-  // Entradas de inventario (esto NO depende de sales, así que se queda igual)
-  final inventory = await dbClient.query(
-    'inventory_entries',
-    where: 'date BETWEEN ? AND ?',
-    whereArgs: [
-      start.toIso8601String(),
-      end.add(const Duration(days: 1)).toIso8601String(),
-    ],
-  );
+    double totalInventario = inventory.fold(
+      0.0,
+      (sum, e) =>
+          sum +
+          (((e['cost'] as num?)?.toDouble() ?? 0.0) *
+              ((e['quantity'] as num?)?.toInt() ?? 0)),
+    );
 
-  double totalInventario = inventory.fold(
-    0.0,
-    (sum, e) =>
-        sum + (((e['cost'] as num?)?.toDouble() ?? 0.0) * ((e['quantity'] as num?)?.toInt() ?? 0)),
-  );
-
-  // Gastos
-  final gastos = await dbClient.rawQuery(
-    '''
+    // Gastos
+    final gastos = await dbClient.rawQuery(
+      '''
     SELECT SUM(ee.amount) as totalGastos
     FROM expense_entries ee
     WHERE date(ee.date) BETWEEN ? AND ?
     ''',
-    [
-      start.toIso8601String().split('T').first,
-      end.toIso8601String().split('T').first,
-    ],
-  );
+      [
+        start.toIso8601String().split('T').first,
+        end.toIso8601String().split('T').first,
+      ],
+    );
 
-  double totalGastos =
-      gastos.first['totalGastos'] != null
-          ? (gastos.first['totalGastos'] as num).toDouble()
-          : 0.0;
+    double totalGastos =
+        gastos.first['totalGastos'] != null
+            ? (gastos.first['totalGastos'] as num).toDouble()
+            : 0.0;
 
-  return {
-    'facturas': totalFacturas,
-    'ventas': totalVentas,
-    'pagos_credito': pagosCredito,
-    'descuentos': descuentos,
-    'ganancia': ganancia,
-    'productos': productosVendidos,
-    'inventario': totalInventario,
-    'gastos': totalGastos,
-  };
-}
-
+    return {
+      'facturas': totalFacturas,
+      'ventas': totalVentas,
+      'pagos_credito': pagosCredito,
+      'descuentos': descuentos,
+      'ganancia': ganancia,
+      'productos': productosVendidos,
+      'inventario': totalInventario,
+      'gastos': totalGastos,
+    };
+  }
 
   static Future<List<Map<String, dynamic>>> getFacturasPorCliente(
     String phone,
@@ -927,6 +1319,17 @@ static Future<List<Sale>> getAllSales() async {
     DateTime end,
   ) async {
     final dbClient = await db;
+    try {
+      return await SupabaseSyncHelper.getFacturasPorCliente(phone, start, end);
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getFacturasPorCliente',
+        error: error,
+        stackTrace: stackTrace,
+        details:
+            'No se pudo leer facturas por cliente desde Supabase. Se usara SQLite.',
+      );
+    }
 
     final result = await dbClient.query(
       'sales',
@@ -946,6 +1349,17 @@ static Future<List<Sale>> getAllSales() async {
     DateTime end,
   ) async {
     final dbClient = await db;
+    try {
+      return await SupabaseSyncHelper.getRentableProductReport(start, end);
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getRentableProductReport',
+        error: error,
+        stackTrace: stackTrace,
+        details:
+            'No se pudo leer reporte de rentables desde Supabase. Se usara SQLite.',
+      );
+    }
 
     final result = await dbClient.rawQuery(
       '''
@@ -973,233 +1387,345 @@ static Future<List<Sale>> getAllSales() async {
   }
 
   // Corregir el método savePaymentHistory
-static Future<int> savePaymentHistory(
-  String clientPhone,
-  double amount,
-  String receiptNumber,
-  Map<int, double> affectedSales,
-) async {
-  final dbClient = await db;
+  static Future<int> savePaymentHistory(
+    String clientPhone,
+    double amount,
+    String receiptNumber,
+    Map<int, double> affectedSales,
+  ) async {
+    final dbClient = await db;
 
-  // Convertir el mapa de ventas afectadas a formato JSON para almacenamiento
-  final affectedSalesJson = jsonEncode(
-    affectedSales.map((key, value) => MapEntry(key.toString(), value)),
-  );
+    // Convertir el mapa de ventas afectadas a formato JSON para almacenamiento
+    final affectedSalesJson = jsonEncode(
+      affectedSales.map((key, value) => MapEntry(key.toString(), value)),
+    );
 
-  return await dbClient.insert('payment_history', {
-    'client_phone': clientPhone,
-    'amount': amount,
-    'payment_date': DateTime.now().toIso8601String(),
-    'receipt_number': receiptNumber,
-    'affected_sales': affectedSalesJson,
-    'created_at': DateTime.now().toIso8601String(),
-  });
-}
+    final id = await _nextSafeLocalId('payment_history');
+    final paymentMap = {
+      'id': id,
+      'client_phone': clientPhone,
+      'amount': amount,
+      'payment_date': DateTime.now().toIso8601String(),
+      'receipt_number': receiptNumber,
+      'affected_sales': affectedSalesJson,
+      'created_at': DateTime.now().toIso8601String(),
+    };
+    await dbClient.insert('payment_history', paymentMap);
+    await SupabaseSyncHelper.syncPaymentHistory(paymentMap);
+    return id;
+  }
 
-// Corregir el método getPaymentHistoryByClient
-static Future<List<Map<String, dynamic>>> getPaymentHistoryByClient(
-  String phone,
-) async {
-  final dbClient = await db;
+  // Corregir el método getPaymentHistoryByClient
+  static Future<List<Map<String, dynamic>>> getPaymentHistoryByClient(
+    String phone,
+  ) async {
+    final dbClient = await db;
 
-  final result = await dbClient.query(
-    'payment_history',
-    where: 'client_phone = ?',
-    whereArgs: [phone],
-    orderBy: 'payment_date DESC',
-  );
+    final result = await dbClient.query(
+      'payment_history',
+      where: 'client_phone = ?',
+      whereArgs: [phone],
+      orderBy: 'payment_date DESC',
+    );
 
-  return result;
-}
+    return result;
+  }
 
-// Corregir el método getPaymentById
-static Future<Map<String, dynamic>?> getPaymentById(int id) async {
-  final dbClient = await db;
+  static Future<List<Map<String, dynamic>>> getPaymentHistoryBetweenDates(
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    final dbClient = await db;
+    try {
+      return await SupabaseSyncHelper.getPaymentHistoryBetweenDates(
+        startDate,
+        endDate,
+      );
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getPaymentHistoryBetweenDates',
+        error: error,
+        stackTrace: stackTrace,
+        details:
+            'No se pudo leer pagos por fecha desde Supabase. Se usara SQLite.',
+      );
+    }
 
-  final result = await dbClient.query(
-    'payment_history',
-    where: 'id = ?',
-    whereArgs: [id],
-    limit: 1,
-  );
+    final start = startDate.toIso8601String();
+    final end = endDate.add(const Duration(days: 1)).toIso8601String();
 
-  if (result.isEmpty) return null;
-  return result.first;
-}
+    return await dbClient.query(
+      'payment_history',
+      where: 'payment_date BETWEEN ? AND ?',
+      whereArgs: [start, end],
+      orderBy: 'payment_date DESC',
+    );
+  }
 
-// Corregir el método getPaymentHistoryByDateRange
-static Future<List<Map<String, dynamic>>> getPaymentHistoryByDateRange(
-  String phone,
-  DateTime startDate,
-  DateTime endDate,
-) async {
-  final dbClient = await db;
+  // Corregir el método getPaymentById
+  static Future<Map<String, dynamic>?> getPaymentById(int id) async {
+    final dbClient = await db;
 
-  final start = startDate.toIso8601String();
-  final end = endDate.add(Duration(days: 1)).toIso8601String();
+    final result = await dbClient.query(
+      'payment_history',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
 
-  final result = await dbClient.query(
-    'payment_history',
-    where: 'client_phone = ? AND payment_date BETWEEN ? AND ?',
-    whereArgs: [phone, start, end],
-    orderBy: 'payment_date DESC',
-  );
+    if (result.isEmpty) return null;
+    return result.first;
+  }
 
-  return result;
-}
+  // Corregir el método getPaymentHistoryByDateRange
+  static Future<List<Map<String, dynamic>>> getPaymentHistoryByDateRange(
+    String phone,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    final dbClient = await db;
+    try {
+      return await SupabaseSyncHelper.getPaymentHistoryByDateRange(
+        phone,
+        startDate,
+        endDate,
+      );
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getPaymentHistoryByDateRange',
+        error: error,
+        stackTrace: stackTrace,
+        details: 'No se pudo leer pagos desde Supabase. Se usara SQLite.',
+      );
+    }
 
+    final start = startDate.toIso8601String();
+    final end = endDate.add(Duration(days: 1)).toIso8601String();
 
-// Anular venta + devolver inventario + arreglar crédito
+    final result = await dbClient.query(
+      'payment_history',
+      where: 'client_phone = ? AND payment_date BETWEEN ? AND ?',
+      whereArgs: [phone, start, end],
+      orderBy: 'payment_date DESC',
+    );
 
-static Future<void> voidSaleAndRestock(int saleId) async {
-  final dbClient = await db;
+    return result;
+  }
 
-  await dbClient.transaction((txn) async {
-    // 1) Leer la venta
-    final saleRes = await txn.query(
+  // Anular venta + devolver inventario + arreglar crédito
+
+  static Future<void> voidSaleAndRestock(int saleId) async {
+    final dbClient = await db;
+
+    await dbClient.transaction((txn) async {
+      // 1) Leer la venta
+      final saleRes = await txn.query(
+        'sales',
+        where: 'id = ?',
+        whereArgs: [saleId],
+        limit: 1,
+      );
+      if (saleRes.isEmpty) throw Exception("Venta no existe");
+
+      final sale = saleRes.first;
+
+      // si ya está anulada, no hacer nada
+      final isVoided = (sale['isVoided'] ?? 0) as int;
+      if (isVoided == 1) return;
+
+      final isCredit = (sale['isCredit'] as int) == 1;
+      final total = (sale['total'] as num).toDouble();
+      final amountDue = (sale['amountDue'] as num).toDouble();
+      final clientPhone = sale['clientPhone'] as String?;
+
+      // 2) Obtener items de la venta
+      final items = await txn.query(
+        'sale_items',
+        where: 'sale_id = ?',
+        whereArgs: [saleId],
+      );
+
+      // 3) Devolver inventario
+      for (final it in items) {
+        final productId = it['product_id'] as int;
+        final qty = (it['quantity'] as num).toInt();
+
+        await txn.rawUpdate(
+          'UPDATE products SET quantity = quantity + ? WHERE id = ?',
+          [qty, productId],
+        );
+      }
+
+      // 4) Si era crédito, revertir el crédito del cliente
+      // pagosRecibidos = total - amountDue
+      if (isCredit && clientPhone != null && clientPhone.isNotEmpty) {
+        final clientRes = await txn.query(
+          'clients',
+          where: 'phone = ?',
+          whereArgs: [clientPhone],
+          limit: 1,
+        );
+
+        if (clientRes.isNotEmpty) {
+          final client = clientRes.first;
+
+          final credit = (client['credit'] as num?)?.toDouble() ?? 0.0;
+          final creditLimit =
+              (client['creditLimit'] as num?)?.toDouble() ?? 0.0;
+          final creditAvailable =
+              (client['creditAvailable'] as num?)?.toDouble() ?? 0.0;
+
+          // En tu lógica: credit = deuda, creditAvailable = disponible
+          // Esta venta aportó:
+          // - deudaGenerada = amountDue (lo que aún debía)
+          // - pagosRecibidos = total - amountDue (ya pagado)
+          final deudaGenerada = amountDue;
+          final pagosRecibidos = total - amountDue;
+
+          final newCredit = (credit - deudaGenerada).clamp(0.0, creditLimit);
+          final newAvailable = (creditAvailable + deudaGenerada).clamp(
+            0.0,
+            creditLimit,
+          );
+
+          await txn.update(
+            'clients',
+            {'credit': newCredit, 'creditAvailable': newAvailable},
+            where: 'phone = ?',
+            whereArgs: [clientPhone],
+          );
+
+          // Nota importante:
+          // Si tú guardas recibos en payment_history relacionados a esta sale,
+          // idealmente deberías marcarlos como anulados también.
+          // (Más abajo te digo cómo).
+        }
+      }
+
+      // 5) Marcar venta como anulada (esto la saca de reportes)
+      await txn.update(
+        'sales',
+        {
+          'isVoided': 1,
+          'voidedAt': DateTime.now().toIso8601String(),
+          'total': 0.0,
+          'amountDue': 0.0,
+          'isPaid': 1,
+        },
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+    });
+
+    final updatedSaleRows = await dbClient.query(
       'sales',
       where: 'id = ?',
       whereArgs: [saleId],
       limit: 1,
     );
-    if (saleRes.isEmpty) throw Exception("Venta no existe");
+    if (updatedSaleRows.isNotEmpty) {
+      await SupabaseSyncHelper.syncSale(updatedSaleRows.first);
+      final clientPhone = updatedSaleRows.first['clientPhone']?.toString();
+      if (clientPhone != null && clientPhone.isNotEmpty) {
+        final client = await getClientByPhone(clientPhone);
+        if (client != null) await SupabaseSyncHelper.syncClient(client);
+      }
+    }
 
-    final sale = saleRes.first;
-
-    // si ya está anulada, no hacer nada
-    final isVoided = (sale['isVoided'] ?? 0) as int;
-    if (isVoided == 1) return;
-
-    final isCredit = (sale['isCredit'] as int) == 1;
-    final total = (sale['total'] as num).toDouble();
-    final amountDue = (sale['amountDue'] as num).toDouble();
-    final clientPhone = sale['clientPhone'] as String?;
-
-    // 2) Obtener items de la venta
-    final items = await txn.query(
+    final items = await dbClient.query(
       'sale_items',
       where: 'sale_id = ?',
       whereArgs: [saleId],
     );
-
-    // 3) Devolver inventario
-    for (final it in items) {
-      final productId = it['product_id'] as int;
-      final qty = (it['quantity'] as num).toInt();
-
-      await txn.rawUpdate(
-        'UPDATE products SET quantity = quantity + ? WHERE id = ?',
-        [qty, productId],
-      );
+    for (final item in items) {
+      final productId = item['product_id'] as int?;
+      if (productId == null) continue;
+      final product = await getProductById(productId);
+      if (product != null) await SupabaseSyncHelper.syncProduct(product);
     }
+  }
 
-    // 4) Si era crédito, revertir el crédito del cliente
-    // pagosRecibidos = total - amountDue
-    if (isCredit && clientPhone != null && clientPhone.isNotEmpty) {
-      final clientRes = await txn.query(
-        'clients',
-        where: 'phone = ?',
-        whereArgs: [clientPhone],
-        limit: 1,
-      );
-
-      if (clientRes.isNotEmpty) {
-        final client = clientRes.first;
-
-        final credit = (client['credit'] as num?)?.toDouble() ?? 0.0;
-        final creditLimit = (client['creditLimit'] as num?)?.toDouble() ?? 0.0;
-        final creditAvailable =
-            (client['creditAvailable'] as num?)?.toDouble() ?? 0.0;
-
-        // En tu lógica: credit = deuda, creditAvailable = disponible
-        // Esta venta aportó:
-        // - deudaGenerada = amountDue (lo que aún debía)
-        // - pagosRecibidos = total - amountDue (ya pagado)
-        final deudaGenerada = amountDue;
-        final pagosRecibidos = total - amountDue;
-
-        final newCredit = (credit - deudaGenerada).clamp(0.0, creditLimit);
-        final newAvailable = (creditAvailable + deudaGenerada).clamp(
-          0.0,
-          creditLimit,
-        );
-
-        await txn.update(
-          'clients',
-          {'credit': newCredit, 'creditAvailable': newAvailable},
-          where: 'phone = ?',
-          whereArgs: [clientPhone],
-        );
-
-        // Nota importante:
-        // Si tú guardas recibos en payment_history relacionados a esta sale,
-        // idealmente deberías marcarlos como anulados también.
-        // (Más abajo te digo cómo).
-      }
-    }
-
-    // 5) Marcar venta como anulada (esto la saca de reportes)
-    await txn.update(
-      'sales',
-      {
-        'isVoided': 1,
-        'voidedAt': DateTime.now().toIso8601String(),
-        'total': 0.0,
-        'amountDue': 0.0,
-        'isPaid': 1,
-      },
-      where: 'id = ?',
-      whereArgs: [saleId],
-    );
-  });
-}
-
-static Future<void> _ensureInventoryDraftTable() async {
-  final dbClient = await db;
-  await dbClient.execute('''
+  static Future<void> _ensureInventoryDraftTable() async {
+    final dbClient = await db;
+    await dbClient.execute('''
     CREATE TABLE IF NOT EXISTS inventory_drafts(
       draft_key TEXT PRIMARY KEY,
       payload TEXT,
       updated_at TEXT
     );
   ''');
-}
+  }
 
-static Future<void> saveInventoryDraft(String draftKey, String payload) async {
-  await _ensureInventoryDraftTable();
-  final dbClient = await db;
-  await dbClient.insert(
-    'inventory_drafts',
-    {
+  static Future<void> saveInventoryDraft(
+    String draftKey,
+    String payload,
+  ) async {
+    await _ensureInventoryDraftTable();
+    final dbClient = await db;
+    final updatedAt = DateTime.now().toIso8601String();
+    await dbClient.insert('inventory_drafts', {
       'draft_key': draftKey,
       'payload': payload,
-      'updated_at': DateTime.now().toIso8601String(),
-    },
-    conflictAlgorithm: ConflictAlgorithm.replace,
-  );
-}
+      'updated_at': updatedAt,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await SupabaseSyncHelper.syncInventoryDraft(
+      draftKey: draftKey,
+      payload: payload,
+      updatedAt: updatedAt,
+    );
+  }
 
-static Future<String?> getInventoryDraft(String draftKey) async {
-  await _ensureInventoryDraftTable();
-  final dbClient = await db;
-  final result = await dbClient.query(
-    'inventory_drafts',
-    where: 'draft_key = ?',
-    whereArgs: [draftKey],
-    limit: 1,
-  );
-  if (result.isEmpty) return null;
-  return result.first['payload'] as String?;
-}
+  static Future<String?> getInventoryDraft(String draftKey) async {
+    await _ensureInventoryDraftTable();
+    final dbClient = await db;
+    try {
+      final cloudPayload = await SupabaseSyncHelper.getInventoryDraft(draftKey);
+      if (cloudPayload != null && cloudPayload.trim().isNotEmpty) {
+        await dbClient.insert('inventory_drafts', {
+          'draft_key': draftKey,
+          'payload': cloudPayload,
+          'updated_at': DateTime.now().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        return cloudPayload;
+      }
+    } catch (error, stackTrace) {
+      await ErrorLogger.log(
+        source: 'DBHelper.getInventoryDraft',
+        error: error,
+        stackTrace: stackTrace,
+        details:
+            'No se pudo leer borrador de inventario desde Supabase. Se usara SQLite.',
+      );
+    }
 
-static Future<void> deleteInventoryDraft(String draftKey) async {
-  await _ensureInventoryDraftTable();
-  final dbClient = await db;
-  await dbClient.delete(
-    'inventory_drafts',
-    where: 'draft_key = ?',
-    whereArgs: [draftKey],
-  );
-}
+    final result = await dbClient.query(
+      'inventory_drafts',
+      where: 'draft_key = ?',
+      whereArgs: [draftKey],
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return result.first['payload'] as String?;
+  }
 
+  static Future<void> deleteInventoryDraft(String draftKey) async {
+    await _ensureInventoryDraftTable();
+    final dbClient = await db;
+    await dbClient.delete(
+      'inventory_drafts',
+      where: 'draft_key = ?',
+      whereArgs: [draftKey],
+    );
+    await SupabaseSyncHelper.deleteInventoryDraft(draftKey);
+  }
+
+  static Future<int> _nextSafeLocalId(String table) async {
+    final dbClient = await db;
+    final localMaxResult = await dbClient.rawQuery(
+      'SELECT MAX(id) AS max_id FROM $table',
+    );
+    final localMax = (localMaxResult.first['max_id'] as num?)?.toInt() ?? 0;
+    final cloudMax = await SupabaseSyncHelper.getMaxLocalId(table) ?? 0;
+    return (localMax > cloudMax ? localMax : cloudMax) + 1;
+  }
 }

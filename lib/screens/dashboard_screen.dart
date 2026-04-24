@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pos_app/screens/backup_screen.dart';
 import 'package:pos_app/screens/expenses_screen.dart';
 import 'package:pos_app/screens/error_logs_screen.dart';
 import 'package:pos_app/screens/help_screen.dart';
@@ -8,6 +9,7 @@ import 'package:pos_app/screens/clients_screen.dart';
 import 'package:pos_app/screens/report_screen.dart';
 import 'package:pos_app/screens/sales_history_screen.dart';
 import 'package:pos_app/screens/suppliers_screen.dart';
+import 'package:pos_app/screens/supabase_status_screen.dart';
 import 'products_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -17,36 +19,77 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<_DashboardItem> items = [
       _DashboardItem('Facturación', Icons.point_of_sale, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => BillingScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => BillingScreen()),
+        );
       }),
       _DashboardItem('Productos', Icons.inventory_2, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ProductsScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ProductsScreen()),
+        );
       }),
       _DashboardItem('Clientes', Icons.people, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ClientsScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ClientsScreen()),
+        );
       }),
       _DashboardItem('Proveedores', Icons.local_shipping, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => SuppliersScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => SuppliersScreen()),
+        );
       }),
       _DashboardItem('Historial', Icons.history, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => SalesHistoryScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => SalesHistoryScreen()),
+        );
       }),
       _DashboardItem('Reportes', Icons.receipt, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ReportScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ReportScreen()),
+        );
       }),
-            _DashboardItem('Inventario', Icons.add_shopping_cart, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => InventoryScreen()));
+      _DashboardItem('Inventario', Icons.add_shopping_cart, () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => InventoryScreen()),
+        );
       }),
       _DashboardItem('Gastos', Icons.currency_exchange, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ExpensesScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ExpensesScreen()),
+        );
       }),
       _DashboardItem('Ayuda', Icons.question_mark_rounded, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => HelpScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => HelpScreen()),
+        );
       }),
       _DashboardItem('Errores', Icons.bug_report, () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ErrorLogsScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ErrorLogsScreen()),
+        );
       }),
-      
+      _DashboardItem('Backup', Icons.backup, () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => BackupScreen()),
+        );
+      }),
+      _DashboardItem('Supabase', Icons.cloud_sync, () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => SupabaseStatusScreen()),
+        );
+      }),
     ];
 
     return Scaffold(

@@ -12,20 +12,15 @@ class ExpenseEntry {
   });
 
   Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'expense_id': expenseId,
-      'amount': amount,
-      'date': date,
-    };
+    return {'id': id, 'expense_id': expenseId, 'amount': amount, 'date': date};
   }
 
   factory ExpenseEntry.fromMap(Map<String, dynamic> map) {
     return ExpenseEntry(
-      id: map['id'],
-      expenseId: map['expense_id'],
-      amount: map['amount'],
-      date: map['date'],
+      id: (map['id'] as num?)?.toInt(),
+      expenseId: (map['expense_id'] as num?)?.toInt() ?? 0,
+      amount: (map['amount'] as num?)?.toDouble() ?? 0.0,
+      date: map['date']?.toString() ?? '',
     );
   }
 }

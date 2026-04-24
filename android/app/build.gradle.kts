@@ -6,13 +6,13 @@ plugins {
 
 android {
     namespace = "com.example.pos_app" // Asegúrate de que coincide con AndroidManifest.xml
-    compileSdk = 34 // ⚠️ SDK más alto requerido por algunos plugins
+    compileSdk = 35 // SDK requerido por plugins de Supabase/app_links
     ndkVersion = "27.0.12077973" // Tu NDK correcto para blue_thermal_printer
 
     defaultConfig {
         applicationId = "com.example.pos_app"
         minSdk = 21
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
     }

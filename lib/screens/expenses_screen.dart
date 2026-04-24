@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../db/db_helper.dart';
+import '../helpers/error_logger.dart';
 import '../models/expense.dart';
 import '../models/expense_entry.dart';
 import '../screens/expense_history_screen.dart';
@@ -32,30 +33,31 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
     await showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Nuevo Gasto'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'Nombre del gasto'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+      builder:
+          (_) => AlertDialog(
+            title: const Text('Nuevo Gasto'),
+            content: TextField(
+              controller: controller,
+              decoration: const InputDecoration(hintText: 'Nombre del gasto'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final name = controller.text.trim();
+                  if (name.isNotEmpty) {
+                    await DBHelper.insertExpense(Expense(name: name));
+                    Navigator.pop(context);
+                    _loadExpenses();
+                  }
+                },
+                child: const Text('Guardar'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () async {
-              final name = controller.text.trim();
-              if (name.isNotEmpty) {
-                await DBHelper.insertExpense(Expense(name: name));
-                Navigator.pop(context);
-                _loadExpenses();
-              }
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -64,38 +66,63 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
     await showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text('Registrar gasto: ${expense.name}'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(hintText: 'Monto'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+      builder:
+          (_) => AlertDialog(
+            title: Text('Registrar gasto: ${expense.name}'),
+            content: TextField(
+              controller: controller,
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(hintText: 'Monto'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final amount = double.tryParse(controller.text.trim());
+                  if (amount != null && amount > 0) {
+                    final expenseId = expense.id;
+                    if (expenseId == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Este gasto no tiene ID local valido.'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final entry = ExpenseEntry(
+                        expenseId: expenseId,
+                        amount: amount,
+                        date: DateTime.now().toIso8601String(),
+                      );
+                      await DBHelper.insertExpenseEntry(entry);
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Gasto registrado')),
+                      );
+                    } catch (error, stackTrace) {
+                      await ErrorLogger.log(
+                        source: 'ExpensesScreen._registerExpenseAmount',
+                        error: error,
+                        stackTrace: stackTrace,
+                        details: 'No se pudo registrar la entrada de gasto.',
+                      );
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('No se pudo registrar: $error')),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Registrar'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () async {
-              final amount = double.tryParse(controller.text.trim());
-              if (amount != null && amount > 0) {
-                final entry = ExpenseEntry(
-                  expenseId: expense.id!,
-                  amount: amount,
-                  date: DateTime.now().toIso8601String(),
-                );
-                await DBHelper.insertExpenseEntry(entry);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Gasto registrado')),
-                );
-              }
-            },
-            child: const Text('Registrar'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -103,42 +130,42 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Gestión de Gastos')),
-      body: _expenses.isEmpty
-          ? const Center(child: Text('No hay gastos definidos'))
-          : ListView.builder(
-              itemCount: _expenses.length,
-              itemBuilder: (_, index) {
-                final expense = _expenses[index];
-                return ListTile(
-                  title: Text(expense.name),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _registerExpenseAmount(expense),
-                );
-              },
-            ),
+      body:
+          _expenses.isEmpty
+              ? const Center(child: Text('No hay gastos definidos'))
+              : ListView.builder(
+                itemCount: _expenses.length,
+                itemBuilder: (_, index) {
+                  final expense = _expenses[index];
+                  return ListTile(
+                    title: Text(expense.name),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _registerExpenseAmount(expense),
+                  );
+                },
+              ),
       floatingActionButton: Column(
-  mainAxisSize: MainAxisSize.min,
-  children: [
-    FloatingActionButton.extended(
-      heroTag: 'history',
-      icon: const Icon(Icons.history),
-      label: const Text(''),
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ExpenseHistoryScreen()),
-        );
-      },
-    ),
-    const SizedBox(height: 12),
-    FloatingActionButton(
-      heroTag: 'add',
-      onPressed: _addExpense,
-      child: const Icon(Icons.add),
-    ),
-  ],
-),
-
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'history',
+            icon: const Icon(Icons.history),
+            label: const Text(''),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ExpenseHistoryScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'add',
+            onPressed: _addExpense,
+            child: const Icon(Icons.add),
+          ),
+        ],
+      ),
     );
   }
 }
